@@ -1,0 +1,116 @@
+[
+{
+  "directory": "/home/jechew/acoustic_reliefs/build",
+  "command": "/usr/bin/g++ -Dacoustics3d_EXPORTS -I/home/jechew/acoustic_reliefs/acoustics3d/include -I/home/jechew/acoustic_reliefs/acoustics3d/extern/eigen -I/home/jechew/miniconda3/envs/env/include/python3.12 -I/home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/include -O3 -DNDEBUG -std=gnu++17 -fPIC -fvisibility=hidden -fno-stack-protector -ffunction-sections -fdata-sections -fopenmp -o CMakeFiles/acoustics3d.dir/src/aca.cpp.o -c /home/jechew/acoustic_reliefs/acoustics3d/src/aca.cpp",
+  "file": "/home/jechew/acoustic_reliefs/acoustics3d/src/aca.cpp",
+  "output": "CMakeFiles/acoustics3d.dir/src/aca.cpp.o"
+},
+{
+  "directory": "/home/jechew/acoustic_reliefs/build",
+  "command": "/usr/bin/g++ -Dacoustics3d_EXPORTS -I/home/jechew/acoustic_reliefs/acoustics3d/include -I/home/jechew/acoustic_reliefs/acoustics3d/extern/eigen -I/home/jechew/miniconda3/envs/env/include/python3.12 -I/home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/include -O3 -DNDEBUG -std=gnu++17 -fPIC -fvisibility=hidden -fno-stack-protector -ffunction-sections -fdata-sections -fopenmp -o CMakeFiles/acoustics3d.dir/src/adjoint.cpp.o -c /home/jechew/acoustic_reliefs/acoustics3d/src/adjoint.cpp",
+  "file": "/home/jechew/acoustic_reliefs/acoustics3d/src/adjoint.cpp",
+  "output": "CMakeFiles/acoustics3d.dir/src/adjoint.cpp.o"
+},
+{
+  "directory": "/home/jechew/acoustic_reliefs/build",
+  "command": "/usr/bin/g++ -Dacoustics3d_EXPORTS -I/home/jechew/acoustic_reliefs/acoustics3d/include -I/home/jechew/acoustic_reliefs/acoustics3d/extern/eigen -I/home/jechew/miniconda3/envs/env/include/python3.12 -I/home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/include -O3 -DNDEBUG -std=gnu++17 -fPIC -fvisibility=hidden -fno-stack-protector -ffunction-sections -fdata-sections -fopenmp -o CMakeFiles/acoustics3d.dir/src/clustertree.cpp.o -c /home/jechew/acoustic_reliefs/acoustics3d/src/clustertree.cpp",
+  "file": "/home/jechew/acoustic_reliefs/acoustics3d/src/clustertree.cpp",
+  "output": "CMakeFiles/acoustics3d.dir/src/clustertree.cpp.o"
+},
+{
+  "directory": "/home/jechew/acoustic_reliefs/build",
+  "command": "/usr/bin/g++ -Dacoustics3d_EXPORTS -I/home/jechew/acoustic_reliefs/acoustics3d/include -I/home/jechew/acoustic_reliefs/acoustics3d/extern/eigen -I/home/jechew/miniconda3/envs/env/include/python3.12 -I/home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/include -O3 -DNDEBUG -std=gnu++17 -fPIC -fvisibility=hidden -fno-stack-protector -ffunction-sections -fdata-sections -fopenmp -o CMakeFiles/acoustics3d.dir/src/derivatives.cpp.o -c /home/jechew/acoustic_reliefs/acoustics3d/src/derivatives.cpp",
+  "file": "/home/jechew/acoustic_reliefs/acoustics3d/src/derivatives.cpp",
+  "output": "CMakeFiles/acoustics3d.dir/src/derivatives.cpp.o"
+},
+{
+  "directory": "/home/jechew/acoustic_reliefs/build",
+  "command": "/usr/bin/g++ -Dacoustics3d_EXPORTS -I/home/jechew/acoustic_reliefs/acoustics3d/include -I/home/jechew/acoustic_reliefs/acoustics3d/extern/eigen -I/home/jechew/miniconda3/envs/env/include/python3.12 -I/home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/include -O3 -DNDEBUG -std=gnu++17 -fPIC -fvisibility=hidden -fno-stack-protector -ffunction-sections -fdata-sections -fopenmp -o CMakeFiles/acoustics3d.dir/src/helpers.cpp.o -c /home/jechew/acoustic_reliefs/acoustics3d/src/helpers.cpp",
+  "file": "/home/jechew/acoustic_reliefs/acoustics3d/src/helpers.cpp",
+  "output": "CMakeFiles/acoustics3d.dir/src/helpers.cpp.o"
+},
+{
+  "directory": "/home/jechew/acoustic_reliefs/build",
+  "command": "/usr/bin/g++ -Dacoustics3d_EXPORTS -I/home/jechew/acoustic_reliefs/acoustics3d/include -I/home/jechew/acoustic_reliefs/acoustics3d/extern/eigen -I/home/jechew/miniconda3/envs/env/include/python3.12 -I/home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/include -O3 -DNDEBUG -std=gnu++17 -fPIC -fvisibility=hidden -fno-stack-protector -ffunction-sections -fdata-sections -fopenmp -o CMakeFiles/acoustics3d.dir/src/hmatrix.cpp.o -c /home/jechew/acoustic_reliefs/acoustics3d/src/hmatrix.cpp",
+  "file": "/home/jechew/acoustic_reliefs/acoustics3d/src/hmatrix.cpp",
+  "output": "CMakeFiles/acoustics3d.dir/src/hmatrix.cpp.o"
+},
+{
+  "directory": "/home/jechew/acoustic_reliefs/build",
+  "command": "/usr/bin/g++ -Dacoustics3d_EXPORTS -I/home/jechew/acoustic_reliefs/acoustics3d/include -I/home/jechew/acoustic_reliefs/acoustics3d/extern/eigen -I/home/jechew/miniconda3/envs/env/include/python3.12 -I/home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/include -O3 -DNDEBUG -std=gnu++17 -fPIC -fvisibility=hidden -fno-stack-protector -ffunction-sections -fdata-sections -fopenmp -o CMakeFiles/acoustics3d.dir/src/integrate.cpp.o -c /home/jechew/acoustic_reliefs/acoustics3d/src/integrate.cpp",
+  "file": "/home/jechew/acoustic_reliefs/acoustics3d/src/integrate.cpp",
+  "output": "CMakeFiles/acoustics3d.dir/src/integrate.cpp.o"
+},
+{
+  "directory": "/home/jechew/acoustic_reliefs/build",
+  "command": "/usr/bin/g++ -Dacoustics3d_EXPORTS -I/home/jechew/acoustic_reliefs/acoustics3d/include -I/home/jechew/acoustic_reliefs/acoustics3d/extern/eigen -I/home/jechew/miniconda3/envs/env/include/python3.12 -I/home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/include -O3 -DNDEBUG -std=gnu++17 -fPIC -fvisibility=hidden -fno-stack-protector -ffunction-sections -fdata-sections -fopenmp -o CMakeFiles/acoustics3d.dir/src/read_obj.cpp.o -c /home/jechew/acoustic_reliefs/acoustics3d/src/read_obj.cpp",
+  "file": "/home/jechew/acoustic_reliefs/acoustics3d/src/read_obj.cpp",
+  "output": "CMakeFiles/acoustics3d.dir/src/read_obj.cpp.o"
+},
+{
+  "directory": "/home/jechew/acoustic_reliefs/build",
+  "command": "/usr/bin/g++ -Dacoustics3d_EXPORTS -I/home/jechew/acoustic_reliefs/acoustics3d/include -I/home/jechew/acoustic_reliefs/acoustics3d/extern/eigen -I/home/jechew/miniconda3/envs/env/include/python3.12 -I/home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/include -O3 -DNDEBUG -std=gnu++17 -fPIC -fvisibility=hidden -fno-stack-protector -ffunction-sections -fdata-sections -fopenmp -o CMakeFiles/acoustics3d.dir/src/acoustics3d.cpp.o -c /home/jechew/acoustic_reliefs/acoustics3d/src/acoustics3d.cpp",
+  "file": "/home/jechew/acoustic_reliefs/acoustics3d/src/acoustics3d.cpp",
+  "output": "CMakeFiles/acoustics3d.dir/src/acoustics3d.cpp.o"
+},
+{
+  "directory": "/home/jechew/acoustic_reliefs/build",
+  "command": "/usr/bin/g++ -DNB_COMPACT_ASSERTIONS -I/home/jechew/acoustic_reliefs/acoustics3d/include -I/home/jechew/acoustic_reliefs/acoustics3d/extern/eigen -I/home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/ext/robin_map/include -I/home/jechew/miniconda3/envs/env/include/python3.12 -I/home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/include -O3 -DNDEBUG -std=gnu++17 -fPIC -fvisibility=hidden -ffunction-sections -fdata-sections -fno-strict-aliasing -o CMakeFiles/nanobind-static.dir/home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/src/nb_internals.cpp.o -c /home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/src/nb_internals.cpp",
+  "file": "/home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/src/nb_internals.cpp",
+  "output": "CMakeFiles/nanobind-static.dir/home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/src/nb_internals.cpp.o"
+},
+{
+  "directory": "/home/jechew/acoustic_reliefs/build",
+  "command": "/usr/bin/g++ -DNB_COMPACT_ASSERTIONS -I/home/jechew/acoustic_reliefs/acoustics3d/include -I/home/jechew/acoustic_reliefs/acoustics3d/extern/eigen -I/home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/ext/robin_map/include -I/home/jechew/miniconda3/envs/env/include/python3.12 -I/home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/include -O3 -DNDEBUG -std=gnu++17 -fPIC -fvisibility=hidden -ffunction-sections -fdata-sections -fno-strict-aliasing -o CMakeFiles/nanobind-static.dir/home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/src/nb_func.cpp.o -c /home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/src/nb_func.cpp",
+  "file": "/home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/src/nb_func.cpp",
+  "output": "CMakeFiles/nanobind-static.dir/home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/src/nb_func.cpp.o"
+},
+{
+  "directory": "/home/jechew/acoustic_reliefs/build",
+  "command": "/usr/bin/g++ -DNB_COMPACT_ASSERTIONS -I/home/jechew/acoustic_reliefs/acoustics3d/include -I/home/jechew/acoustic_reliefs/acoustics3d/extern/eigen -I/home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/ext/robin_map/include -I/home/jechew/miniconda3/envs/env/include/python3.12 -I/home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/include -O3 -DNDEBUG -std=gnu++17 -fPIC -fvisibility=hidden -ffunction-sections -fdata-sections -fno-strict-aliasing -o CMakeFiles/nanobind-static.dir/home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/src/nb_type.cpp.o -c /home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/src/nb_type.cpp",
+  "file": "/home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/src/nb_type.cpp",
+  "output": "CMakeFiles/nanobind-static.dir/home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/src/nb_type.cpp.o"
+},
+{
+  "directory": "/home/jechew/acoustic_reliefs/build",
+  "command": "/usr/bin/g++ -DNB_COMPACT_ASSERTIONS -I/home/jechew/acoustic_reliefs/acoustics3d/include -I/home/jechew/acoustic_reliefs/acoustics3d/extern/eigen -I/home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/ext/robin_map/include -I/home/jechew/miniconda3/envs/env/include/python3.12 -I/home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/include -O3 -DNDEBUG -std=gnu++17 -fPIC -fvisibility=hidden -ffunction-sections -fdata-sections -fno-strict-aliasing -o CMakeFiles/nanobind-static.dir/home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/src/nb_enum.cpp.o -c /home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/src/nb_enum.cpp",
+  "file": "/home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/src/nb_enum.cpp",
+  "output": "CMakeFiles/nanobind-static.dir/home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/src/nb_enum.cpp.o"
+},
+{
+  "directory": "/home/jechew/acoustic_reliefs/build",
+  "command": "/usr/bin/g++ -DNB_COMPACT_ASSERTIONS -I/home/jechew/acoustic_reliefs/acoustics3d/include -I/home/jechew/acoustic_reliefs/acoustics3d/extern/eigen -I/home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/ext/robin_map/include -I/home/jechew/miniconda3/envs/env/include/python3.12 -I/home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/include -O3 -DNDEBUG -std=gnu++17 -fPIC -fvisibility=hidden -ffunction-sections -fdata-sections -fno-strict-aliasing -o CMakeFiles/nanobind-static.dir/home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/src/nb_ndarray.cpp.o -c /home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/src/nb_ndarray.cpp",
+  "file": "/home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/src/nb_ndarray.cpp",
+  "output": "CMakeFiles/nanobind-static.dir/home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/src/nb_ndarray.cpp.o"
+},
+{
+  "directory": "/home/jechew/acoustic_reliefs/build",
+  "command": "/usr/bin/g++ -DNB_COMPACT_ASSERTIONS -I/home/jechew/acoustic_reliefs/acoustics3d/include -I/home/jechew/acoustic_reliefs/acoustics3d/extern/eigen -I/home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/ext/robin_map/include -I/home/jechew/miniconda3/envs/env/include/python3.12 -I/home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/include -O3 -DNDEBUG -std=gnu++17 -fPIC -fvisibility=hidden -ffunction-sections -fdata-sections -fno-strict-aliasing -o CMakeFiles/nanobind-static.dir/home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/src/nb_static_property.cpp.o -c /home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/src/nb_static_property.cpp",
+  "file": "/home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/src/nb_static_property.cpp",
+  "output": "CMakeFiles/nanobind-static.dir/home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/src/nb_static_property.cpp.o"
+},
+{
+  "directory": "/home/jechew/acoustic_reliefs/build",
+  "command": "/usr/bin/g++ -DNB_COMPACT_ASSERTIONS -I/home/jechew/acoustic_reliefs/acoustics3d/include -I/home/jechew/acoustic_reliefs/acoustics3d/extern/eigen -I/home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/ext/robin_map/include -I/home/jechew/miniconda3/envs/env/include/python3.12 -I/home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/include -O3 -DNDEBUG -std=gnu++17 -fPIC -fvisibility=hidden -ffunction-sections -fdata-sections -fno-strict-aliasing -o CMakeFiles/nanobind-static.dir/home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/src/common.cpp.o -c /home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/src/common.cpp",
+  "file": "/home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/src/common.cpp",
+  "output": "CMakeFiles/nanobind-static.dir/home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/src/common.cpp.o"
+},
+{
+  "directory": "/home/jechew/acoustic_reliefs/build",
+  "command": "/usr/bin/g++ -DNB_COMPACT_ASSERTIONS -I/home/jechew/acoustic_reliefs/acoustics3d/include -I/home/jechew/acoustic_reliefs/acoustics3d/extern/eigen -I/home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/ext/robin_map/include -I/home/jechew/miniconda3/envs/env/include/python3.12 -I/home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/include -O3 -DNDEBUG -std=gnu++17 -fPIC -fvisibility=hidden -ffunction-sections -fdata-sections -fno-strict-aliasing -o CMakeFiles/nanobind-static.dir/home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/src/error.cpp.o -c /home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/src/error.cpp",
+  "file": "/home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/src/error.cpp",
+  "output": "CMakeFiles/nanobind-static.dir/home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/src/error.cpp.o"
+},
+{
+  "directory": "/home/jechew/acoustic_reliefs/build",
+  "command": "/usr/bin/g++ -DNB_COMPACT_ASSERTIONS -I/home/jechew/acoustic_reliefs/acoustics3d/include -I/home/jechew/acoustic_reliefs/acoustics3d/extern/eigen -I/home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/ext/robin_map/include -I/home/jechew/miniconda3/envs/env/include/python3.12 -I/home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/include -O3 -DNDEBUG -std=gnu++17 -fPIC -fvisibility=hidden -ffunction-sections -fdata-sections -fno-strict-aliasing -o CMakeFiles/nanobind-static.dir/home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/src/trampoline.cpp.o -c /home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/src/trampoline.cpp",
+  "file": "/home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/src/trampoline.cpp",
+  "output": "CMakeFiles/nanobind-static.dir/home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/src/trampoline.cpp.o"
+},
+{
+  "directory": "/home/jechew/acoustic_reliefs/build",
+  "command": "/usr/bin/g++ -DNB_COMPACT_ASSERTIONS -I/home/jechew/acoustic_reliefs/acoustics3d/include -I/home/jechew/acoustic_reliefs/acoustics3d/extern/eigen -I/home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/ext/robin_map/include -I/home/jechew/miniconda3/envs/env/include/python3.12 -I/home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/include -O3 -DNDEBUG -std=gnu++17 -fPIC -fvisibility=hidden -ffunction-sections -fdata-sections -fno-strict-aliasing -o CMakeFiles/nanobind-static.dir/home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/src/implicit.cpp.o -c /home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/src/implicit.cpp",
+  "file": "/home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/src/implicit.cpp",
+  "output": "CMakeFiles/nanobind-static.dir/home/jechew/miniconda3/envs/env/lib/python3.12/site-packages/nanobind/src/implicit.cpp.o"
+}
+]

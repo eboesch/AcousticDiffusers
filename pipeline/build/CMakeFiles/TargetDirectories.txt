@@ -1,0 +1,4 @@
+/home/jechew/acoustic_reliefs/build/CMakeFiles/acoustics3d.dir
+/home/jechew/acoustic_reliefs/build/CMakeFiles/nanobind-static.dir
+/home/jechew/acoustic_reliefs/build/CMakeFiles/edit_cache.dir
+/home/jechew/acoustic_reliefs/build/CMakeFiles/rebuild_cache.dir
