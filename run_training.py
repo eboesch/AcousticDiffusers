@@ -40,6 +40,8 @@ if __name__ == "__main__":
 
     generator = torch.Generator().manual_seed(seed)
     train_dataset, val_dataset, test_dataset = random_split(dataset, [train_ratio, val_ratio, test_ratio], generator=generator)
+    input_shape = list(train_dataset[0][0].shape)
+    output_size = int(train_dataset[0][1].shape[0])
 
     # train_dataset = ImageDataset(train_data, train_label)
     # val_dataset = ImageDataset
@@ -53,7 +55,7 @@ if __name__ == "__main__":
 
 
     # Set up model
-    model = CNN().to(device)
+    model = CNN(input_shape=input_shape, output_size=output_size).to(device)
     optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=lr)
     loss_fct = nn.MSELoss()
     eval_loss_fct = nn.MSELoss()

@@ -4,19 +4,60 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.optim.lr_scheduler import StepLR
 from tqdm import tqdm
+from typing import Tuple, Union
+import math
+
+def expand(x: Union[int, Tuple[int, int]]):
+    return (x, x) if isinstance(x, int) else x
+
+
+def calc_output_size(in_shape: Tuple[int, int], kernel: Union[int, Tuple[int, int]], stride: Union[int, Tuple[int, int]], padding: Union[int, Tuple[int, int]] = 0, dilation: Union[int, Tuple[int, int]] = 1):
+    """
+    Calculates output height and width after input was been feed through a conv or pool layer
+    """
+    kernel = expand(kernel)
+    stride = expand(stride)
+    padding = expand(padding)
+    dilation = expand(dilation)
+
+    h_out = math.floor(((in_shape[0] + 2 * padding[0] - dilation[0] * (kernel[0] - 1) - 1) / stride[0]) + 1)
+    w_out = math.floor(((in_shape[1] + 2 * padding[1] - dilation[1] * (kernel[1] - 1) - 1) / stride[1]) + 1)
+    # print([h_out, w_out])
+    return [h_out, w_out]
 
 
 class CNN(nn.Module):
-    def __init__(self):
+    def __init__(
+        self,
+        input_shape: Tuple[int, int, int],
+        output_size: int, 
+        cnn_out_channels_1: int = 16,
+        cnn_out_channels_2: int = 36,
+        cnn_kernel_size: int = 3,
+        cnn_stride: int = 1,
+        cnn_padding: int = 0,
+        pool_kernel_size: int = 2,
+        pool_stride: int = 2,
+        dropout_rate_1: int = 0.25,
+        dropout_rate_2: int = 0.5,
+        linear_size: int = 64
+    ):
         super(CNN, self).__init__()
-        self.conv1 = nn.Conv2d(in_channels=3, out_channels=16, kernel_size=3, stride=1)
-        self.conv2 = nn.Conv2d(in_channels=16, out_channels=32, kernel_size=3, stride=1)
-        self.pool1 = nn.MaxPool2d(kernel_size=2, stride=2)
-        self.pool2 = nn.MaxPool2d(kernel_size=2, stride=2)
-        self.dropout1 = nn.Dropout(0.25)
-        self.dropout2 = nn.Dropout(0.5)
-        self.fc1 = nn.Linear(362112, 64)
-        self.fc2 = nn.Linear(64, 17)
+        self.conv1 = nn.Conv2d(in_channels=input_shape[0], out_channels=cnn_out_channels_1, kernel_size=cnn_kernel_size, stride=cnn_stride, padding=cnn_padding)
+        self.conv2 = nn.Conv2d(in_channels=cnn_out_channels_1, out_channels=cnn_out_channels_2, kernel_size=cnn_kernel_size, stride=cnn_stride, padding=cnn_padding)
+        self.pool1 = nn.MaxPool2d(kernel_size=pool_kernel_size, stride=pool_stride)
+        self.pool2 = nn.MaxPool2d(kernel_size=pool_kernel_size, stride=pool_stride)
+        self.dropout1 = nn.Dropout(dropout_rate_1)
+        self.dropout2 = nn.Dropout(dropout_rate_2)
+
+        conv1_shape = calc_output_size(input_shape[1:], cnn_kernel_size, cnn_stride)
+        pool1_shape = calc_output_size(conv1_shape, pool_kernel_size, pool_stride)
+        conv2_shape = calc_output_size(pool1_shape, cnn_kernel_size, cnn_stride)
+        pool2_shape = calc_output_size(conv2_shape, pool_kernel_size, pool_stride)
+        flattened_size = int(cnn_out_channels_2*pool2_shape[0]*pool2_shape[1])
+
+        self.fc1 = nn.Linear(flattened_size, linear_size)
+        self.fc2 = nn.Linear(linear_size, output_size)
 
     def forward(self, x):
         x = self.conv1(x)
