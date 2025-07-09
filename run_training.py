@@ -18,7 +18,7 @@ if __name__ == "__main__":
     timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
 
     logging.basicConfig(
-        handlers=[logging.FileHandler(f"logs_{timestamp}.log")],
+        handlers=[logging.FileHandler(f"{timestamp}_logs.log")],
         level=logging.INFO,
         format="%(asctime)s | %(message)s",
         datefmt="%H:%M",
@@ -33,8 +33,8 @@ if __name__ == "__main__":
     batch_size = 64
     lr = 1e-3
     log_interval = 100
-    save_model = True
-    model_path = f"model_{timestamp}.pth"
+    save_model = False
+    model_path = f"{timestamp}_model.pth"
 
 
     logger.info(f"lr: {lr}")
@@ -84,23 +84,33 @@ if __name__ == "__main__":
     model = CNN(input_shape=input_shape, output_size=output_size).to(device)
     optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=lr)
     loss_fct = nn.MSELoss()
-    eval_loss_fct = nn.MSELoss()
-    
+    mse_eval_loss_fct = nn.MSELoss()
+    mae_eval_loss_fct = nn.L1Loss()
+
     logger.info("Model: %s", model)
-    
+    logger.info("Using MSE training loss")
+
+
+    # logger.info("Using StepLR scheduler")
+    # step_size = 4
+    # gamma = 0.1
+    # logger.info(f"step_size: {step_size}")
+    # logger.info(f"gamma: {gamma}")
+    # scheduler = StepLR(optimizer, step_size=step_size, gamma=gamma)
+
 
     # Training
     logger.info("Starting Training...")
-    # scheduler = StepLR(optimizer, step_size=1, gamma=args.gamma)
     for epoch in range(epochs):
         print(f"Epoch {epoch+1}")
         logger.info(f"Epoch {epoch+1}")
         
         train(model, train_loader, loss_fct, optimizer, log_interval, logger, device)
-        val_loss = test(val_loader, model, eval_loss_fct, device)
+        mae_val_loss, mse_val_loss, rel_val_loss = test(val_loader, model, mse_eval_loss_fct, mae_eval_loss_fct, device)
 
-        logger.info(f'Validation loss: {val_loss:.5f}')
-        print(f'Validation loss: {val_loss:.5f}')
+        logger.info(f'MAE Validation Loss: {mae_val_loss:.4e},   MSE Validation Loss: {mse_val_loss:.4e},   Relative Validation Loss: {rel_val_loss:.4f}')
+        print(f'MAE Validation Loss: {mae_val_loss:.4e},   MSE Validation Loss: {mse_val_loss:.4e},   Relative Validation Loss: {rel_val_loss:.4f}')
+        # logger.info(f"Last learning rate: {scheduler.get_last_lr()}")
         # scheduler.step()
 
     if save_model:
@@ -109,10 +119,10 @@ if __name__ == "__main__":
 
     logger.info("Starting Evaluation...")
     # Evaluation
-    if save_model:
-        model.load_state_dict(torch.load(model_path, weights_only=True))  # load the saved best model
-        model = model.to(device)
+    # if save_model:
+    #     model.load_state_dict(torch.load(model_path, weights_only=True))  # load the saved best model
+    #     model = model.to(device)
     eval_loss_fct = nn.L1Loss()
-    test_loss = test(test_loader, model, eval_loss_fct, device)
-    logger.info(f'Evaluation loss: {test_loss:.5f}')
-    print(f'Evaluation loss: {test_loss:.5f}')
+    mae_test_loss, mse_test_loss, rel_test_loss = test(test_loader, model, mse_eval_loss_fct, mae_eval_loss_fct, device)
+    logger.info(f'MAE Evaluation loss: {mae_test_loss:.4e},   MSE Evaluation loss: {mse_test_loss:.4e},   Relative Validation Loss: {rel_test_loss:.4f}')
+    print(f'MAE Evaluation loss: {mae_test_loss:.4e},   MSE Evaluation loss: {mse_test_loss:.4e},   Relative Validation Loss: {rel_test_loss:.4f}')

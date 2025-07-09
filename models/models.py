@@ -96,25 +96,38 @@ def train(model: nn.Module, train_loader: DataLoader, loss_fct, optimizer, log_i
         # Print Statistics
         running_loss += loss.item()
         if batch_id % log_interval == log_interval-1:    
-            logger.info(f'[{batch_id + 1:5d}/{len(train_loader):>5d}] Loss: {running_loss / 2000:.5f}')
+            logger.info(f'[{batch_id + 1:5d}/{len(train_loader):>5d}] Loss: {running_loss / 2000:.4e}')
             running_loss = 0.0
 
 
-def test(test_loader, model, loss_fct, device):
+def MRE(pred, target, epsilon=1e-8):
+    """
+    Mean Relative Error
+    """
+    return torch.mean(torch.abs((target - pred)) / (torch.abs(target) + epsilon)) * 100
+
+
+def test(test_loader, model, mae_loss_fct, mse_loss_fct, device):
     # Set the model to evaluation mode
     model.eval()
-    test_loss = 0
+    mae_test_loss = 0
+    mse_test_loss = 0
+    rel_loss = 0
 
     with torch.no_grad():
         for data, target in test_loader:
             data, target = data.to(device), target.to(device)
             output = model(data)
-            test_loss += loss_fct(output, target).item()  # sum up batch loss
+            mae_test_loss += mae_loss_fct(output, target).item()  # sum up batch loss
+            mse_test_loss += mse_loss_fct(output, target).item()
+            rel_loss += MRE(output, target)
             
 
-    test_loss /= len(test_loader)
+    mae_test_loss /= len(test_loader)
+    mse_test_loss /= len(test_loader)
+    rel_loss /= len(test_loader)
 
-    return test_loss
+    return mae_test_loss, mse_test_loss, rel_loss
     
 
 
