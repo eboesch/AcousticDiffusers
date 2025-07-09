@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.optim.lr_scheduler import StepLR
+from torch.utils.data import DataLoader
 from tqdm import tqdm
 from typing import Tuple, Union
 import math
@@ -75,7 +76,7 @@ class CNN(nn.Module):
         return x
 
 
-def train(model, train_loader, loss_fct, optimizer, log_interval, device):
+def train(model: nn.Module, train_loader: DataLoader, loss_fct, optimizer, log_interval, logger, device) -> None:
     # Set the model to training mode
     model.train()
 
@@ -95,7 +96,7 @@ def train(model, train_loader, loss_fct, optimizer, log_interval, device):
         # Print Statistics
         running_loss += loss.item()
         if batch_id % log_interval == log_interval-1:    
-            print(f'[{batch_id + 1:5d}/{len(train_loader):>5d}] Loss: {running_loss / 2000:.5f}')
+            logger.info(f'[{batch_id + 1:5d}/{len(train_loader):>5d}] Loss: {running_loss / 2000:.5f}')
             running_loss = 0.0
 
 
@@ -113,7 +114,8 @@ def test(test_loader, model, loss_fct, device):
 
     test_loss /= len(test_loader)
 
-    print(f'Test set: Average loss: {test_loss:.4f}')
+    return test_loss
+    
 
 
 
