@@ -89,7 +89,7 @@ class ImageDataset(Dataset):
 
 
     def __getitem__(self, idx):
-        target = torch.tensor(self.targets.iloc[idx, 1:].to_numpy(dtype=np.float64))#, dtype = torch.float32)
+        target = torch.tensor(self.targets.iloc[idx, 1:].to_numpy(dtype=np.float32))#, dtype = torch.float32)
         img_path = os.path.join(self.data_dir, self.targets.iloc[idx, 0])
 
         image = self.loader(img_path)
