@@ -8,6 +8,8 @@ import pandas as pd
 import numpy as np
 import os
 from torchvision.transforms import v2
+# from working.gen_reliefs import center_crop, resize
+import cv2
 
 
 class RotateToLandscape(torch.nn.Module):
@@ -19,6 +21,31 @@ class RotateToLandscape(torch.nn.Module):
             image = torch.rot90(image, dims=(1,2))
         return image
 
+
+# size = 256
+size = 375
+
+
+
+class MaxCenterCrop(torch.nn.Module):
+    def forward(self, img):
+        h, w = img.shape[1:]
+        min_dim = min(h, w)
+        top = (h - min_dim) // 2
+        left = (w - min_dim) // 2
+        return img[:, top:top+min_dim, left:left+min_dim]
+
+class resize(torch.nn.Module):
+    def forward(self, img, size=256):
+        return cv2.resize(img, (size, size), interpolation=cv2.INTER_AREA)
+
+
+pipeline_transform = v2.Compose([
+    MaxCenterCrop(),
+    # resize(),
+    v2.Resize(size=(size, size)),
+    v2.ToDtype(torch.float32, scale=True) # scale to [0.0, 1.0]
+])
 
 default_transform = v2.Compose([
     RotateToLandscape(),
@@ -62,7 +89,7 @@ class ImageDataset(Dataset):
 
 
     def __getitem__(self, idx):
-        target = torch.tensor(self.targets.iloc[idx, 1:], dtype = torch.float32)
+        target = torch.tensor(self.targets.iloc[idx, 1:].to_numpy(dtype=np.float64))#, dtype = torch.float32)
         img_path = os.path.join(self.data_dir, self.targets.iloc[idx, 0])
 
         image = self.loader(img_path)
@@ -102,7 +129,7 @@ if __name__ == "__main__":
 
     relative_paths = processed_paths[:3]
 
-    dataset = ImageDataset(relative_paths, data_dir, targets_path)
+    dataset = ImageDataset(relative_paths, data_dir, targets_path, transform=pipeline_transform)
     print(dataset[0])
 
     t=0
