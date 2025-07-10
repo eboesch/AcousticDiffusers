@@ -7,6 +7,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 from typing import Tuple, Union
 import math
+import numpy as np
 
 def expand(x: Union[int, Tuple[int, int]]):
     return (x, x) if isinstance(x, int) else x
@@ -33,7 +34,7 @@ class CNN(nn.Module):
         input_shape: Tuple[int, int, int],
         output_size: int, 
         cnn_out_channels_1: int = 16,
-        cnn_out_channels_2: int = 36,
+        cnn_out_channels_2: int = 32,
         cnn_kernel_size: int = 3,
         cnn_stride: int = 1,
         cnn_padding: int = 0,
@@ -100,35 +101,33 @@ def train(model: nn.Module, train_loader: DataLoader, loss_fct, optimizer, log_i
             running_loss = 0.0
 
 
-def MRE(pred, target, epsilon=1e-8):
+class MRE(nn.Module):
     """
     Mean Relative Error
     """
-    return torch.mean(torch.abs((target - pred)) / (torch.abs(target) + epsilon)) * 100
+    def __init__(self, eps=1e-8):
+        super(MRE, self).__init__()
+        self.eps = eps
+    
+    def forward(self, pred, target):
+        return torch.mean(torch.abs((target - pred)) / (torch.abs(target) + self.eps)) * 100
 
 
-def test(test_loader, model, mae_loss_fct, mse_loss_fct, device):
+def test(test_loader, model, loss_fcts, device):
     # Set the model to evaluation mode
     model.eval()
-    mae_test_loss = 0
-    mse_test_loss = 0
-    rel_loss = 0
+    losses = np.zeros(len(loss_fcts))
 
     with torch.no_grad():
         for data, target in test_loader:
             data, target = data.to(device), target.to(device)
             output = model(data)
-            mae_test_loss += mae_loss_fct(output, target).item()  # sum up batch loss
-            mse_test_loss += mse_loss_fct(output, target).item()
-            rel_loss += MRE(output, target)
+            for idx, loss in enumerate(loss_fcts):
+                losses[idx] += loss(output, target).item()
             
+    losses /= len(test_loader)
 
-    mae_test_loss /= len(test_loader)
-    mse_test_loss /= len(test_loader)
-    rel_loss /= len(test_loader)
-
-    return mae_test_loss, mse_test_loss, rel_loss
-    
+    return losses    
 
 
 
