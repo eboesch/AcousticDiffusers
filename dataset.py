@@ -72,7 +72,7 @@ def default_loader(path: str) -> Any:
 
 
 class ImageDataset(Dataset):
-    def __init__(self, relative_paths, data_dir, targets_path, loader: Callable[[str], Any] = default_loader, transform: Any = None, target_transform: Any = None):
+    def __init__(self, relative_paths, data_dir, targets_path, loader: Callable[[str], Any] = default_loader, transform_mode: str = "default", target_transform: Any = None):
 
         self.targets = pd.read_csv(targets_path)
 
@@ -81,7 +81,12 @@ class ImageDataset(Dataset):
 
         self.loader = loader
     
-        self.transform = transform or default_transform
+        if transform_mode == "default":
+            self.transform = default_transform
+        elif transform_mode == "pipeline":
+            self.transform = pipeline_transform
+        else:
+            raise ValueError("Unknown transform type.")
         self.target_transform = target_transform
 
         # for path in relative_paths:
@@ -129,7 +134,7 @@ if __name__ == "__main__":
 
     relative_paths = processed_paths[:3]
 
-    dataset = ImageDataset(relative_paths, data_dir, targets_path, transform=pipeline_transform)
+    dataset = ImageDataset(relative_paths, data_dir, targets_path, transform_mode="pipeline")
     print(dataset[0])
 
     t=0
