@@ -109,6 +109,29 @@ class ImageDataset(Dataset):
         
     def __len__(self):        
         return len(self.targets)
+    
+
+
+
+class DictImageDataset(ImageDataset):
+    def __init__(self, relative_paths, data_dir, targets_path, loader: Callable[[str], Any] = default_loader, transform_mode: str = "default", target_transform: Any = None):
+         super().__init__(relative_paths, data_dir, targets_path, loader, transform_mode, target_transform)
+
+
+    def __getitem__(self, idx) -> dict:
+        target = torch.tensor(self.targets.iloc[idx, 1:].to_numpy(dtype=np.float32))#, dtype = torch.float32)
+        img_path = os.path.join(self.data_dir, self.targets.iloc[idx, 0])
+
+        image = self.loader(img_path)
+        
+        if self.transform:
+            image = self.transform(image)
+        if self.target_transform:
+            target = self.target_transform(target)
+
+        return {"x": image, "y": target}
+    
+
 
 
 # class ImageDataset(ImageFolder):
