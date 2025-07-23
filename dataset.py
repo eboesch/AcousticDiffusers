@@ -53,8 +53,14 @@ default_transform = v2.Compose([
     v2.ToDtype(torch.float32, scale=True) # scale to [0.0, 1.0]
 ])
 
+# size = 20
+# def target_expand(target):
+#     long = target.expand(size, -1)
+#     return long.expand(size, long.shape[1])
 
-
+def target_pad(target):
+    target = target.unsqueeze(-1)
+    return torch.nn.functional.pad(target, (0, size - target.shape[1], 0, size - target.shape[0]), mode='constant', value=0.0)
 
 
 def default_loader(path: str) -> Any:
