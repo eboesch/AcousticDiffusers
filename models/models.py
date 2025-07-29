@@ -68,11 +68,11 @@ class CNN(nn.Module):
         x = self.conv2(x)
         x = F.relu(x)
         x = self.pool2(x)
-        x = self.dropout1(x)
+        # x = self.dropout1(x)
         x = torch.flatten(x, 1)
         x = self.fc1(x)
         x = F.relu(x)
-        x = self.dropout2(x)
+        # x = self.dropout2(x)
         x = self.fc2(x)
         return x
 
@@ -97,7 +97,7 @@ def train(model: nn.Module, train_loader: DataLoader, loss_fct, optimizer, log_i
         # Print Statistics
         running_loss += loss.item()
         if batch_id % log_interval == log_interval-1:    
-            logger.info(f'[{batch_id + 1:5d}/{len(train_loader):>5d}] Loss: {running_loss / 2000:.4e}')
+            logger.info(f'[{batch_id + 1:5d}/{len(train_loader):>5d}] Loss: {running_loss / log_interval:.4e}')
             running_loss = 0.0
 
 
@@ -186,14 +186,24 @@ def test(test_loader, model, loss_fcts, device):
     model.eval()
     losses = np.zeros(len(loss_fcts))
 
+    batch_size = 16
+    output_size = 17
+    last_out = torch.zeros((batch_size, output_size)).to(device)
+    n_outputs = 0
     with torch.no_grad():
         for data, target in test_loader:
             data, target = data.to(device), target.to(device)
             output = model(data)
             for idx, loss in enumerate(loss_fcts):
                 losses[idx] += loss(output, target).item()
+
+            out_batch_size = output.shape[0]
+            if (output - last_out[:out_batch_size, :]).any():
+                n_outputs += 1
+            last_out = output
             
     losses /= len(test_loader)
+    print(f"number of distinct outputs: {n_outputs}")
 
     return losses    
 

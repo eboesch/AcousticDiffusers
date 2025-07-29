@@ -36,7 +36,8 @@ if __name__ == "__main__":
     lr = 1e-3
     log_interval = 100
     save_inferences = True
-    model_path = f"logs/2025-07-23-14-47-03_model.pth"
+    # model_path = f"logs/2025-07-23-14-47-03_model.pth"
+    model_path = f"logs/2025-07-29-18-03-15_model.pth"
     # model_path = f"logs/2025-07-24-10-53-19_model.pth"
     # inferences_path = f"logs/{timestamp}_inferences.pkl"
     inferences_path = f"logs/{timestamp}_inferences.csv"
@@ -76,7 +77,7 @@ if __name__ == "__main__":
     input_shape = list(train_dataset[0][0].shape)
     output_size = int(train_dataset[0][1].shape[0])
 
-    test_dataset = dataset
+    # test_dataset = dataset
 
     # Set up Dataloaders 
     # train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)

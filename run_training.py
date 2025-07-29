@@ -31,10 +31,10 @@ if __name__ == "__main__":
     seed = 0
     epochs = 10
     batch_size = 16#64
-    lr = 1e-3
+    lr = 1e-4
     log_interval = 100
-    save_model = False
-    model_path = f"{timestamp}_model.pth"
+    save_model = True
+    model_path = f"logs/{timestamp}_model.pth"
 
 
     logger.info(f"lr: {lr}")
@@ -84,15 +84,17 @@ if __name__ == "__main__":
     logger.info("Creating Model...")
     model = CNN(input_shape=input_shape, output_size=output_size).to(device)
     # model = CNN(input_shape=input_shape, output_size=output_size, cnn_out_channels_1=32, cnn_out_channels_2=64).to(device)
+    # model.double()
     optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=lr)
-    # loss_fct = nn.MSELoss()
-    loss_fct = nn.L1Loss()
+    loss_fct = nn.MSELoss()
+    # loss_fct = nn.L1Loss()
     mse_eval_loss_fct = nn.MSELoss()
     mae_eval_loss_fct = nn.L1Loss()
     rel_eval_loss_fct = MRE()
+    # loss_fct = MRE()
 
     logger.info("Model: %s", model)
-    logger.info("Using MAE training loss")
+    logger.info("Using MSE training loss")
 
 
     # logger.info("Using StepLR scheduler")
@@ -102,14 +104,14 @@ if __name__ == "__main__":
     # logger.info(f"gamma: {gamma}")
     # scheduler = StepLR(optimizer, step_size=step_size, gamma=gamma)
 
-    logger.info("Using ReduceLROnPlateau scheduler")
-    patience = 1
-    gamma = 0.1
-    threshold = 1e-3
-    logger.info(f"patience: {patience}")
-    logger.info(f"factor: {gamma}")
-    logger.info(f"threshold: {threshold}")
-    scheduler = ReduceLROnPlateau(optimizer, 'min', factor=gamma, patience=patience)
+    # logger.info("Using ReduceLROnPlateau scheduler")
+    # patience = 1
+    # gamma = 0.1
+    # threshold = 1e-3
+    # logger.info(f"patience: {patience}")
+    # logger.info(f"factor: {gamma}")
+    # logger.info(f"threshold: {threshold}")
+    # scheduler = ReduceLROnPlateau(optimizer, 'min', factor=gamma, patience=patience)
 
     # Training
     logger.info("Starting Training...")
@@ -120,11 +122,11 @@ if __name__ == "__main__":
         train(model, train_loader, loss_fct, optimizer, log_interval, logger, device)
         val_losses = test(val_loader, model, [mse_eval_loss_fct, mae_eval_loss_fct, rel_eval_loss_fct], device)
 
-        logger.info(f'MAE Validation Loss: {val_losses[0]:.4e},   MSE Validation Loss: {val_losses[1]:.4e},   Relative Validation Loss: {val_losses[2]:.4f}')
-        print(f'MAE Validation Loss: {val_losses[0]:.4e},   MSE Validation Loss: {val_losses[1]:.4e},   Relative Validation Loss: {val_losses[2]:.4f}')
+        logger.info(f'MSE Validation Loss: {val_losses[0]:.4e},   MAE Validation Loss: {val_losses[1]:.4e},   Relative Validation Loss: {val_losses[2]:.4f}')
+        print(f'MSE Validation Loss: {val_losses[0]:.4e},   MAE Validation Loss: {val_losses[1]:.4e},   Relative Validation Loss: {val_losses[2]:.4f}')
     
-        logger.info(f"Last learning rate: {scheduler.get_last_lr()}")
-        scheduler.step(val_losses[2])
+        # logger.info(f"Last learning rate: {scheduler.get_last_lr()}")
+        # scheduler.step(val_losses[2])
 
     if save_model:
         torch.save(model.state_dict(), model_path)
@@ -136,5 +138,5 @@ if __name__ == "__main__":
     #     model.load_state_dict(torch.load(model_path, weights_only=True))  # load the saved best model
     #     model = model.to(device)
     test_losses = test(test_loader, model, [mse_eval_loss_fct, mae_eval_loss_fct, rel_eval_loss_fct], device)
-    logger.info(f'MAE Evaluation loss: {test_losses[0]:.4e},   MSE Evaluation loss: {test_losses[1]:.4e},   Relative Validation Loss: {test_losses[2]:.4f}')
-    print(f'MAE Evaluation loss: {test_losses[0]:.4e},   MSE Evaluation loss: {test_losses[1]:.4e},   Relative Validation Loss: {test_losses[2]:.4f}')
+    logger.info(f'MSE Evaluation loss: {test_losses[0]:.4e},   MAE Evaluation loss: {test_losses[1]:.4e},   Relative Evaluation Loss: {test_losses[2]:.4f}')
+    print(f'MSE Evaluation loss: {test_losses[0]:.4e},   MAE Evaluation loss: {test_losses[1]:.4e},   Relative Evaluation Loss: {test_losses[2]:.4f}')
