@@ -37,7 +37,9 @@ if __name__ == "__main__":
     log_interval = 100
     save_inferences = True
     model_path = f"logs/2025-07-23-14-47-03_model.pth"
-    inferences_path = f"logs/{timestamp}_inferences.pkl"
+    # model_path = f"logs/2025-07-24-10-53-19_model.pth"
+    # inferences_path = f"logs/{timestamp}_inferences.pkl"
+    inferences_path = f"logs/{timestamp}_inferences.csv"
 
 
 
@@ -74,6 +76,7 @@ if __name__ == "__main__":
     input_shape = list(train_dataset[0][0].shape)
     output_size = int(train_dataset[0][1].shape[0])
 
+    test_dataset = dataset
 
     # Set up Dataloaders 
     # train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
@@ -142,13 +145,26 @@ if __name__ == "__main__":
 
     if save_inferences:
         df = pd.DataFrame()
-        df['targets'] = list(targets)
-        df['preds'] = list(preds)
-        df['mae'] = list(np.abs(targets - preds))
-        df['mse'] = list((targets - preds)**2)
-        df['mre'] = list(np.abs((targets - preds)) / (np.abs(targets) + 1e-8) * 100)
 
-        df.to_pickle(inferences_path)
+        frequncies = [100,125,160,200,250,315,400,500,630,800,1000,1250,1600,2000,2500,3150,4000]
+        for i, freq in enumerate(frequncies):
+            df[f'targets_{freq}'] = targets[:, i]
+            df[f'preds_{freq}'] = preds[:, i]
+            df[f'mae_{freq}'] = np.abs(targets[:, i] - preds[:, i])
+            df[f'mse_{freq}'] = (targets[:, i] - preds[:, i])**2
+            df[f'mre_{freq}'] = np.abs((targets[:, i] - preds[:, i])) / (np.abs(targets[:, i]) + 1e-8) * 100
+
+        df.to_csv(inferences_path, index=False)
+
+
+        # df['targets'] = list(targets)
+        # df['preds'] = list(preds)
+        # df['mae'] = list(np.abs(targets - preds))
+        # df['mse'] = list((targets - preds)**2)
+        # df['mre'] = list(np.abs((targets - preds)) / (np.abs(targets) + 1e-8) * 100)
+
+        # df.to_pickle(inferences_path)
+        
 
 
     # logger.info(f'MAE Evaluation loss: {losses[0]:.4e},   MSE Evaluation loss: {losses[1]:.4e},   Relative Validation Loss: {losses[2]:.4f}')
