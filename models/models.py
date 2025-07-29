@@ -111,6 +111,74 @@ class MRE(nn.Module):
     
     def forward(self, pred, target):
         return torch.mean(torch.abs((target - pred)) / (torch.abs(target) + self.eps)) * 100
+    
+def compute_derivatives(u, domain_size_x=2.0, domain_size_y=2.0, domain_size_z=2.0):
+    """
+    Compute ux, uxx, uy, uyy, uz, uzz from a 3D field using Fourier differentiation.
+    Matches approach used in the document (input in physical space).
+
+    Args:
+        u (Tensor): Shape (batch, nx, ny, nz)
+        domain_size (float): Physical size of the square domain
+
+    Returns:
+        ux, uxx, uy, uyy, uz, uzz (Tensors): Each of shape (batch, nx, ny, nz)
+    """
+    batchsize, nx, ny, nz = u.shape
+    device = u.device
+
+    # Compute wavenumbers (assume 2π periodic)
+    kx = torch.fft.fftfreq(nx, d=domain_size_x / nx).to(device) * 2 * np.pi
+    ky = torch.fft.fftfreq(ny, d=domain_size_y / ny).to(device) * 2 * np.pi
+    kz = torch.fft.fftfreq(nz, d=domain_size_z / nz).to(device) * 2 * np.pi
+
+    kx, ky, kz = torch.meshgrid(kx, ky, kz, indexing='ij')
+    kx = kx.unsqueeze(0)  # shape (1, nx, ny)
+    ky = ky.unsqueeze(0)
+    kz = kz.unsqueeze(0)
+
+
+    # FFT of input
+    u_hat = torch.fft.fftn(u)
+
+    # Derivatives in Fourier space
+    ux_hat = 1j * kx * u_hat
+    uy_hat = 1j * ky * u_hat
+    uz_hat = 1j * kz * u_hat
+
+    uxx_hat = -kx ** 2 * u_hat
+    uyy_hat = -ky ** 2 * u_hat
+    uzz_hat = -kz ** 2 * u_hat
+
+
+    # Inverse FFT to return to physical space
+    ux = torch.fft.ifftn(ux_hat).real
+    uy = torch.fft.ifftn(uy_hat).real
+    uz = torch.fft.ifftn(uz_hat).real
+    uxx = torch.fft.ifftn(uxx_hat).real
+    uyy = torch.fft.ifftn(uyy_hat).real
+    uzz = torch.fft.ifftn(uzz_hat).real
+
+    return {'u': u, 'ux': ux, 'uxx': uxx, 'uy': uy, 'uyy': uyy, 'uz': uz, 'uzz': uzz}
+
+class PDEloss(nn.Module):
+    def __init__(self, device):
+        super(PDEloss, self).__init__()
+        self.device = device
+
+    def forward(self, u):
+        derivs = compute_derivatives(u, domain_size=100)
+
+        uxx = derivs['uxx']
+        uyy = derivs['uyy']
+        uzz = derivs['uzz']
+
+        #TODO: figure out how to get the frequency from the input
+        f = 100       # frequency in Hz
+        c = 343 # Speed of sound in m/s
+        k = 2*np.pi * f / c # wavenumber
+        pde = uxx + uyy + uzz + k**2 *u
+        return torch.mean(pde**2)
 
 
 def test(test_loader, model, loss_fcts, device):
