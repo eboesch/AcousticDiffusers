@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.optim.lr_scheduler import StepLR, ReduceLROnPlateau
 from torch.utils.data import DataLoader, random_split
-from dataset import ImageDataset
+from dataset import ImageDataset, normalize_target
 from models.models import CNN, train, test, MRE
 import pandas as pd
 import logging
@@ -37,7 +37,10 @@ if __name__ == "__main__":
     log_interval = 100
     save_inferences = True
     # model_path = f"logs/2025-07-23-14-47-03_model.pth"
-    model_path = f"logs/2025-07-29-18-03-15_model.pth"
+    # model_path = f"logs/2025-07-29-18-03-15_model.pth" # fixed, MSE loss
+    # model_path = f"logs/2025-07-29-18-34-43_model.pth" # fixed, MAE loss
+    # model_path = f"logs/2025-07-29-18-57-46_model.pth" # fixed, MRE loss
+    model_path = f"logs/2025-07-31-10-30-14_model.pth" # fixed, MAE loss, normalization
     # model_path = f"logs/2025-07-24-10-53-19_model.pth"
     # inferences_path = f"logs/{timestamp}_inferences.pkl"
     inferences_path = f"logs/{timestamp}_inferences.csv"
@@ -65,6 +68,9 @@ if __name__ == "__main__":
     transform_mode="pipeline"
     # logger.info("Using %s transform", transform_mode)
     dataset = ImageDataset(processed_paths, data_dir, targets_path, transform_mode=transform_mode)
+    mean, std = dataset.calculate_stats()
+    target_transform = normalize_target(means=mean, stds=std)
+    dataset.set_target_transform(target_transform)
 
     # split data into train & test set
 
@@ -77,7 +83,7 @@ if __name__ == "__main__":
     input_shape = list(train_dataset[0][0].shape)
     output_size = int(train_dataset[0][1].shape[0])
 
-    # test_dataset = dataset
+    # test_dataset = train_dataset
 
     # Set up Dataloaders 
     # train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
@@ -115,23 +121,26 @@ if __name__ == "__main__":
     with torch.no_grad():
         for data, target in tqdm(test_loader):
             # print("start", index_start)
-
-            index_end = index_start + data.shape[0]
-            # features[index_start:index_end, :, :, :] = data.numpy()
-            targets[index_start:index_end, :] = target.squeeze(1).numpy()
-
+            
             data, target = data.to(device), target.to(device)
             output = model(data)
             
+            if target_transform:
+                output = target_transform.inverse(output)
+                target = target_transform.inverse(target)
             
+            index_end = index_start + data.shape[0]
+            # features[index_start:index_end, :, :, :] = data.numpy()
+            targets[index_start:index_end, :] = target.squeeze(1).cpu().numpy()
+            preds[index_start:index_end, :] = output.squeeze(1).cpu().numpy()
+
+
             out_batch_size = output.shape[0]
             if (output - last_out[:out_batch_size, :]).any():
                 n_outputs += 1
                 # print(f"number of distinct outputs: {n_outputs}")
                 # print(f"output: {output}")
             last_out = output
-
-            preds[index_start:index_end, :] = output.squeeze(1).cpu().numpy()
 
             for idx, loss in enumerate(loss_fcts):
                 losses[idx] += loss(output, target).item()
@@ -168,5 +177,5 @@ if __name__ == "__main__":
         
 
 
-    # logger.info(f'MAE Evaluation loss: {losses[0]:.4e},   MSE Evaluation loss: {losses[1]:.4e},   Relative Validation Loss: {losses[2]:.4f}')
-    print(f'MAE Evaluation loss: {losses[0]:.4e},   MSE Evaluation loss: {losses[1]:.4e},   Relative Validation Loss: {losses[2]:.4f}')
+    # logger.info(f'MSE Evaluation loss: {losses[0]:.4e},   MAE Evaluation loss: {losses[1]:.4e},   Relative Validation Loss: {losses[2]:.4f}')
+    print(f'MSE Evaluation loss: {losses[0]:.4e},   MAE Evaluation loss: {losses[1]:.4e},   Relative Validation Loss: {losses[2]:.4f}')

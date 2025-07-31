@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.optim.lr_scheduler import StepLR, ReduceLROnPlateau
 from torch.utils.data import DataLoader, random_split
-from dataset import ImageDataset
+from dataset import ImageDataset, normalize_target
 from models.models import CNN, train, test, MRE
 import pandas as pd
 import logging
@@ -31,7 +31,7 @@ if __name__ == "__main__":
     seed = 0
     epochs = 10
     batch_size = 16#64
-    lr = 1e-4
+    lr = 1e-5
     log_interval = 100
     save_model = True
     model_path = f"logs/{timestamp}_model.pth"
@@ -57,7 +57,12 @@ if __name__ == "__main__":
     logger.info("Creating Dataset...")
     transform_mode="pipeline"
     logger.info("Using %s transform", transform_mode)
+    target_transform_mode="normalize"
+    logger.info("Using %s target transform", target_transform_mode)
     dataset = ImageDataset(processed_paths, data_dir, targets_path, transform_mode=transform_mode)
+    mean, std = dataset.calculate_stats()
+    target_transform = normalize_target(means=mean, stds=std)
+    dataset.set_target_transform(target_transform)
 
     # split data into train & test set
 
@@ -86,15 +91,15 @@ if __name__ == "__main__":
     # model = CNN(input_shape=input_shape, output_size=output_size, cnn_out_channels_1=32, cnn_out_channels_2=64).to(device)
     # model.double()
     optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=lr)
-    loss_fct = nn.MSELoss()
-    # loss_fct = nn.L1Loss()
+    # loss_fct = nn.MSELoss()
+    loss_fct = nn.L1Loss()
     mse_eval_loss_fct = nn.MSELoss()
     mae_eval_loss_fct = nn.L1Loss()
     rel_eval_loss_fct = MRE()
     # loss_fct = MRE()
 
     logger.info("Model: %s", model)
-    logger.info("Using MSE training loss")
+    logger.info("Using MAE training loss")
 
 
     # logger.info("Using StepLR scheduler")
@@ -120,7 +125,7 @@ if __name__ == "__main__":
         logger.info(f"Epoch {epoch+1}")
         
         train(model, train_loader, loss_fct, optimizer, log_interval, logger, device)
-        val_losses = test(val_loader, model, [mse_eval_loss_fct, mae_eval_loss_fct, rel_eval_loss_fct], device)
+        val_losses = test(val_loader, model, [mse_eval_loss_fct, mae_eval_loss_fct, rel_eval_loss_fct], target_transform, device)
 
         logger.info(f'MSE Validation Loss: {val_losses[0]:.4e},   MAE Validation Loss: {val_losses[1]:.4e},   Relative Validation Loss: {val_losses[2]:.4f}')
         print(f'MSE Validation Loss: {val_losses[0]:.4e},   MAE Validation Loss: {val_losses[1]:.4e},   Relative Validation Loss: {val_losses[2]:.4f}')
@@ -137,6 +142,6 @@ if __name__ == "__main__":
     # if save_model:
     #     model.load_state_dict(torch.load(model_path, weights_only=True))  # load the saved best model
     #     model = model.to(device)
-    test_losses = test(test_loader, model, [mse_eval_loss_fct, mae_eval_loss_fct, rel_eval_loss_fct], device)
+    test_losses = test(test_loader, model, [mse_eval_loss_fct, mae_eval_loss_fct, rel_eval_loss_fct], target_transform, device)
     logger.info(f'MSE Evaluation loss: {test_losses[0]:.4e},   MAE Evaluation loss: {test_losses[1]:.4e},   Relative Evaluation Loss: {test_losses[2]:.4f}')
     print(f'MSE Evaluation loss: {test_losses[0]:.4e},   MAE Evaluation loss: {test_losses[1]:.4e},   Relative Evaluation Loss: {test_losses[2]:.4f}')

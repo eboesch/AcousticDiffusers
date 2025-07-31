@@ -40,6 +40,20 @@ class resize(torch.nn.Module):
         return cv2.resize(img, (size, size), interpolation=cv2.INTER_AREA)
 
 
+class normalize_target(torch.nn.Module):
+    def __init__(self, means, stds):
+        super().__init__()
+        self.means = torch.tensor(means, dtype=torch.float32)
+        self.stds = torch.tensor(stds, dtype=torch.float32)
+
+    def forward(self, targets):   
+        device = targets.device     
+        return (targets - self.means.to(device)) / self.stds.to(device)
+    
+    def inverse(self, targets):
+        device = targets.device 
+        return targets * self.stds.to(device) + self.means.to(device)
+
 pipeline_transform = v2.Compose([
     MaxCenterCrop(),
     # resize(),
@@ -93,11 +107,27 @@ class ImageDataset(Dataset):
             self.transform = pipeline_transform
         else:
             raise ValueError("Unknown transform type.")
+        
         self.target_transform = target_transform
+
+        # if target_transform_mode == "default":
+        #     self.target_transform = None
+        # elif target_transform_mode == "normalize":
+        #     means, stds = self.targets.iloc[:, 1:].mean().to_numpy(), self.targets.iloc[:, 1:].std().to_numpy()
+        #     # self.target_transform = v2.Normalize(mean=means, std=stds)
+        #     self.target_transform = normalize_target_transform(means=means, stds=stds)
+        # else:
+        #     raise ValueError("Unknown target transform type.")
 
         # for path in relative_paths:
         #     data =  
 
+    def calculate_stats(self):
+        means, stds = self.targets.iloc[:, 1:].mean().to_numpy(), self.targets.iloc[:, 1:].std().to_numpy()
+        return means, stds
+    
+    def set_target_transform(self, target_transform):
+        self.target_transform = target_transform
 
     def __getitem__(self, idx):
         target = torch.tensor(self.targets.iloc[idx, 1:].to_numpy(dtype=np.float32))#, dtype = torch.float32)

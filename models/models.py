@@ -181,7 +181,7 @@ class PDEloss(nn.Module):
         return torch.mean(pde**2)
 
 
-def test(test_loader, model, loss_fcts, device):
+def test(test_loader, model, loss_fcts, target_transform, device):
     # Set the model to evaluation mode
     model.eval()
     losses = np.zeros(len(loss_fcts))
@@ -194,6 +194,11 @@ def test(test_loader, model, loss_fcts, device):
         for data, target in test_loader:
             data, target = data.to(device), target.to(device)
             output = model(data)
+            
+            if target_transform:
+                output = target_transform.inverse(output)
+                target = target_transform.inverse(target)
+            
             for idx, loss in enumerate(loss_fcts):
                 losses[idx] += loss(output, target).item()
 
