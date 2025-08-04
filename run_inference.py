@@ -67,7 +67,7 @@ if __name__ == "__main__":
     # logger.info("Creating Dataset...")
     transform_mode="pipeline"
     # logger.info("Using %s transform", transform_mode)
-    dataset = ImageDataset(processed_paths, data_dir, targets_path, transform_mode=transform_mode)
+    dataset = ImageDataset(data_dir, targets_path, transform_mode=transform_mode)
     mean, std = dataset.calculate_stats()
     target_transform = normalize_target(means=mean, stds=std)
     dataset.set_target_transform(target_transform)

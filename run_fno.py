@@ -43,7 +43,7 @@ if __name__ == "__main__":
      processed_paths = list(set(df['path'].tolist()))
 
      transform_mode="pipeline"
-     dataset = DictImageDataset(processed_paths, data_dir, targets_path, transform_mode=transform_mode, target_transform=target_pad)
+     dataset = DictImageDataset(data_dir, targets_path, transform_mode=transform_mode, target_transform=target_pad)
 
      # Split Dataset
      train_ratio = 0.7

@@ -92,12 +92,11 @@ def default_loader(path: str) -> Any:
 
 
 class ImageDataset(Dataset):
-    def __init__(self, relative_paths, data_dir, targets_path, loader: Callable[[str], Any] = default_loader, transform_mode: str = "default", target_transform: Any = None):
+    def __init__(self, data_dir, targets_path, loader: Callable[[str], Any] = default_loader, transform_mode: str = "default", target_transform: Any = None):
 
         self.targets = pd.read_csv(targets_path)
 
         self.data_dir = data_dir
-        self.relative_paths = relative_paths
 
         self.loader = loader
     
@@ -150,8 +149,8 @@ class ImageDataset(Dataset):
 
 
 class DictImageDataset(ImageDataset):
-    def __init__(self, relative_paths, data_dir, targets_path, loader: Callable[[str], Any] = default_loader, transform_mode: str = "default", target_transform: Any = None):
-         super().__init__(relative_paths, data_dir, targets_path, loader, transform_mode, target_transform)
+    def __init__(self, data_dir, targets_path, loader: Callable[[str], Any] = default_loader, transform_mode: str = "default", target_transform: Any = None):
+         super().__init__(data_dir, targets_path, loader, transform_mode, target_transform)
 
 
     def __getitem__(self, idx) -> dict:
@@ -193,7 +192,7 @@ if __name__ == "__main__":
 
     relative_paths = processed_paths[:3]
 
-    dataset = ImageDataset(relative_paths, data_dir, targets_path, transform_mode="pipeline")
+    dataset = ImageDataset(data_dir, targets_path, transform_mode="pipeline")
     print(dataset[0])
 
     t=0
