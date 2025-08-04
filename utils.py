@@ -1,46 +1,6 @@
 import numpy as np
 import pandas as pd
-from run_pipeline import preprocess
-from working.gen_reliefs import optimize_tex, preprocess_tex
-from PIL import Image
-from transformers import AutoImageProcessor, AutoModelForDepthEstimation
-import torch
-import time
 
-
-def height_map_pipeline(image_path: str, device: str = 'cpu'):
-    """
-    Generates a height map from an image and optimizes it for bas-relief.
-
-    Args:
-        image_path (str): Path to the image that should be processed.
-        device (str): Device to run the model on, either 'cpu' or 'cuda'.
-
-    Returns:        
-        np.ndarray: Height map of the image, shape (260, 260) with 2 columns of 0 padding on every side. dtype: float64
-    """
-    model_name = "depth-anything/Depth-Anything-V2-Large-hf"
-    processor = AutoImageProcessor.from_pretrained(model_name, use_fast=True)
-    model = AutoModelForDepthEstimation.from_pretrained(model_name).to(device)
-
-    image = Image.open(image_path).convert("RGB")
-
-    # generate height map
-    hmap = preprocess(image, model, processor, device=device)  # Ensure preprocess supports device
-
-    # os.makedirs("tmp", exist_ok=True)
-    # rnd_name = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
-    # obj_path = f"tmp/{rnd_name}.obj"
-    ht = 0.07
-
-
-    # generate relief
-    ht_low = -ht
-    ht_high = ht
-    tex = (hmap - np.min(hmap)) / (np.max(hmap) - np.min(hmap)) * (ht_high - ht_low) + ht_low
-    tex = optimize_tex(tex, edge_border=2, iterations=100, smoothness_wt=3, device=device)
-    tex = preprocess_tex(tex, edge_border=2)
-    return tex
 
 def compute_diffusion_coeffs(pressures):
     """
@@ -91,10 +51,3 @@ if __name__ == "__main__":
 
     print(f"Difference: {new_target-coeffs}")
 
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    start = time.time()
-    tex = height_map_pipeline("mini_imagenet/" + image_path, device=device) # shape: 260x260 (256x256 plus 2 padding on each side)
-    end = time.time()
-    print(f"time: {end - start:.4f}s")
-    print(tex[2:258, 2:258])

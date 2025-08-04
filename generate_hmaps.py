@@ -63,13 +63,24 @@ if __name__ == "__main__":
     # print(f"time: {end - start:.4f}s")
     # # print(tex[2:258, 2:258])
 
-
+    
 
     output_dir = "hmaps/"
-    processed_paths = list(set(targets['path'].tolist()))
-    processed_paths = ["n01532829/n01532829_7398.JPEG" ]
 
-    for path in tqdm(processed_paths):
+    # Only process images that have coefficients
+    processed_paths = list(set(targets['path'].tolist()))
+    # processed_paths = ["n01532829/n01532829_7398.JPEG" ]
+    image_paths = [data_dir + path for path in processed_paths]
+
+    # Process all images
+    # image_paths = [
+    #     os.path.join(root, file)
+    #     for root, _, files in os.walk(data_dir)
+    #     for file in files
+    #     if file.lower().endswith(('.jpeg', '.jpg'))
+    # ]
+
+    for path in tqdm(image_paths):
         img_dir = path.split("/")[0]
         os.makedirs(os.path.join(output_dir, img_dir), exist_ok=True)
         file = path.split("/")[-1].split(".")[0]
@@ -78,7 +89,7 @@ if __name__ == "__main__":
             print(f"Skipping {output_path}, already exists.")
             continue
 
-        hmap = height_map_pipeline(os.path.join(data_dir, path), device=device)
+        hmap = height_map_pipeline(path, device=device)
         np.save(output_path, hmap)
 
 
