@@ -10,6 +10,8 @@ import os
 from torchvision.transforms import v2
 # from working.gen_reliefs import center_crop, resize
 import cv2
+from utils import height_map_pipeline
+from tqdm import tqdm
 
 
 class RotateToLandscape(torch.nn.Module):
@@ -167,7 +169,62 @@ class DictImageDataset(ImageDataset):
         return {"x": image, "y": target}
     
 
+class HmapDataset(Dataset):
+    def __init__(self, data_dir, targets_path, processed_paths: list[str] = None, device: str = "cpu", transform_mode: str = "default", target_transform: Any = None):
 
+        self.targets = pd.read_csv(targets_path)
+        processed_target_paths = list(set(self.targets['path'].tolist()))
+        if processed_paths is None:
+            self.processed_paths = processed_target_paths
+        else:
+            self.processed_paths = processed_paths
+
+        self.data_dir = data_dir
+   
+        if transform_mode == "default":
+            self.transform = default_transform
+        elif transform_mode == "pipeline":
+            self.transform = pipeline_transform
+        else:
+            raise ValueError("Unknown transform type.")
+        
+        self.target_transform = target_transform
+
+        self.hmaps = []
+        i = 1
+        for path in tqdm(self.processed_paths):
+            hmap = height_map_pipeline(os.path.join(data_dir, path), device=device)
+            # transform
+            self.hmaps.append(hmap)
+            if i % 100 == 0:
+                print(f"Processed {i}/{len(self.processed_paths)} hmaps")
+            i+=1
+
+
+      
+
+    def calculate_stats(self):
+        means, stds = self.targets.iloc[:, 1:].mean().to_numpy(), self.targets.iloc[:, 1:].std().to_numpy()
+        return means, stds
+    
+    def set_target_transform(self, target_transform):
+        self.target_transform = target_transform
+
+    def __getitem__(self, idx):
+        target = torch.tensor(self.targets.iloc[idx, 1:].to_numpy(dtype=np.float32))#, dtype = torch.float32)
+        hmap = self.hmaps[idx]
+        
+        
+        # if self.transform:
+        #     image = self.transform(image)
+        # if self.target_transform:
+        #     target = self.target_transform(target)
+
+        return hmap, target
+    
+        
+    def __len__(self):        
+        return len(self.processed_paths)
 
 # class ImageDataset(ImageFolder):
 #     def __init__(self, data_dir: str, targets_path: str, *args: Any, **kwargs: Any) -> None:
@@ -192,7 +249,15 @@ if __name__ == "__main__":
 
     relative_paths = processed_paths[:3]
 
-    dataset = ImageDataset(data_dir, targets_path, transform_mode="pipeline")
+    # test ImageDataset class
+    # dataset = ImageDataset(data_dir, targets_path, transform_mode="pipeline")
+    # print(dataset[0])
+
+
+    # test HmapDataset class
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device}")
+    dataset = HmapDataset(data_dir, targets_path, device=device)
     print(dataset[0])
 
     t=0
