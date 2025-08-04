@@ -1,4 +1,5 @@
 mini_imagenet/
+hmaps/
 literature/
 __pycache__/
 *.pyc

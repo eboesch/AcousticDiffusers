@@ -63,7 +63,7 @@ pipeline_transform = v2.Compose([
     v2.ToDtype(torch.float32, scale=True) # scale to [0.0, 1.0]
 ])
 
-default_transform = v2.Compose([
+default_img_transform = v2.Compose([
     RotateToLandscape(),
     v2.Resize(size=(375, 500)),
     v2.ToDtype(torch.float32, scale=True) # scale to [0.0, 1.0]
@@ -103,7 +103,7 @@ class ImageDataset(Dataset):
         self.loader = loader
     
         if transform_mode == "default":
-            self.transform = default_transform
+            self.transform = default_img_transform
         elif transform_mode == "pipeline":
             self.transform = pipeline_transform
         else:
@@ -168,38 +168,27 @@ class DictImageDataset(ImageDataset):
 
         return {"x": image, "y": target}
     
+def replace_path_ending(path: str) -> str:
+    """
+    Replace the ending of a file path with a new ending.
+    """
+    return os.path.splitext(path)[0] + ".npy"
 
 class HmapDataset(Dataset):
-    def __init__(self, data_dir, targets_path, processed_paths: list[str] = None, device: str = "cpu", transform_mode: str = "default", target_transform: Any = None):
+    def __init__(self, data_dir, targets_path, transform_mode: str = "default", target_transform: Any = None):
 
         self.targets = pd.read_csv(targets_path)
-        processed_target_paths = list(set(self.targets['path'].tolist()))
-        if processed_paths is None:
-            self.processed_paths = processed_target_paths
-        else:
-            self.processed_paths = processed_paths
-
+        self.targets['path'] = self.targets['path'].map(lambda path: replace_path_ending(path))
         self.data_dir = data_dir
    
-        if transform_mode == "default":
-            self.transform = default_transform
+        if transform_mode == ("default" or None):
+            self.transform = None
         elif transform_mode == "pipeline":
             self.transform = pipeline_transform
         else:
             raise ValueError("Unknown transform type.")
         
         self.target_transform = target_transform
-
-        self.hmaps = []
-        i = 1
-        for path in tqdm(self.processed_paths):
-            hmap = height_map_pipeline(os.path.join(data_dir, path), device=device)
-            # transform
-            self.hmaps.append(hmap)
-            if i % 100 == 0:
-                print(f"Processed {i}/{len(self.processed_paths)} hmaps")
-            i+=1
-
 
       
 
@@ -212,13 +201,15 @@ class HmapDataset(Dataset):
 
     def __getitem__(self, idx):
         target = torch.tensor(self.targets.iloc[idx, 1:].to_numpy(dtype=np.float32))#, dtype = torch.float32)
-        hmap = self.hmaps[idx]
+        hmap_path = os.path.join(self.data_dir, self.targets.iloc[idx, 0])
+
+        hmap = np.load(hmap_path)
         
         
-        # if self.transform:
-        #     image = self.transform(image)
-        # if self.target_transform:
-        #     target = self.target_transform(target)
+        if self.transform:
+            image = self.transform(image)
+        if self.target_transform:
+            target = self.target_transform(target)
 
         return hmap, target
     
@@ -255,9 +246,10 @@ if __name__ == "__main__":
 
 
     # test HmapDataset class
+    data_dir = "hmaps/"
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
-    dataset = HmapDataset(data_dir, targets_path, device=device)
-    print(dataset[0])
+    dataset = HmapDataset(data_dir, targets_path)
+    print(dataset[465])
 
     t=0
