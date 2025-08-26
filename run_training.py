@@ -3,11 +3,12 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.optim.lr_scheduler import StepLR, ReduceLROnPlateau
 from torch.utils.data import DataLoader, random_split
-from dataset import ImageDataset, normalize_target
+from dataset import ImageDataset, HmapDataset, normalize_target
 from models.models import CNN, train, test, MRE
 import pandas as pd
 import logging
 from datetime import datetime
+import os
 
 
 logger = logging.getLogger(__name__)
@@ -44,6 +45,7 @@ if __name__ == "__main__":
     torch.manual_seed(seed)
 
     data_dir = "mini_imagenet/"
+    hmap_dir = "hmaps/"
     targets_path = "mini_imagenet/coeffs.csv"
 
     df = pd.read_csv(targets_path)
@@ -54,12 +56,27 @@ if __name__ == "__main__":
     logger.info("Using %s device", device)
 
     # create dataset
+
+    hmap_paths = [
+        os.path.join(root, file)
+        for root, _, files in os.walk(hmap_dir)
+        for file in files
+        if file.lower().endswith('.npy')
+    ]
+
+    hmap_paths = [path.replace(hmap_dir, "") for path in hmap_paths]
+    img_paths = [path.replace('.npy', '.JPEG') for path in hmap_paths]
+
+
     logger.info("Creating Dataset...")
     transform_mode="pipeline"
     logger.info("Using %s transform", transform_mode)
     target_transform_mode="normalize"
     logger.info("Using %s target transform", target_transform_mode)
-    dataset = ImageDataset(data_dir, targets_path, transform_mode=transform_mode)
+    dataset = ImageDataset(data_dir, targets_path, img_paths, transform_mode=transform_mode)
+    logger.info(f"Using Image Dataset with {len(dataset)} samples")
+    # dataset = HmapDataset(hmap_dir, targets_path, hmap_paths)
+    # logger.info(f"Using Hmap Dataset with {len(dataset)} samples")
     mean, std = dataset.calculate_stats()
     target_transform = normalize_target(means=mean, stds=std)
     dataset.set_target_transform(target_transform)
