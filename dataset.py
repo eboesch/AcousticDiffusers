@@ -10,7 +10,6 @@ import os
 from torchvision.transforms import v2
 # from working.gen_reliefs import center_crop, resize
 import cv2
-from utils import height_map_pipeline
 from tqdm import tqdm
 
 
@@ -94,9 +93,11 @@ def default_loader(path: str) -> Any:
 
 
 class ImageDataset(Dataset):
-    def __init__(self, data_dir, targets_path, loader: Callable[[str], Any] = default_loader, transform_mode: str = "default", target_transform: Any = None):
+    def __init__(self, data_dir, targets_path, data_paths: list[str] = None, loader: Callable[[str], Any] = default_loader, transform_mode: str = "default", target_transform: Any = None):
 
         self.targets = pd.read_csv(targets_path)
+        if data_paths is not None: # if a list of data paths is provided, only use those
+            self.targets = self.targets[self.targets['path'].isin(data_paths)]
 
         self.data_dir = data_dir
 
@@ -151,8 +152,8 @@ class ImageDataset(Dataset):
 
 
 class DictImageDataset(ImageDataset):
-    def __init__(self, data_dir, targets_path, loader: Callable[[str], Any] = default_loader, transform_mode: str = "default", target_transform: Any = None):
-         super().__init__(data_dir, targets_path, loader, transform_mode, target_transform)
+    def __init__(self, data_dir, targets_path, data_paths: list[str] = None, loader: Callable[[str], Any] = default_loader, transform_mode: str = "default", target_transform: Any = None):
+         super().__init__(data_dir, targets_path, data_paths, loader, transform_mode, target_transform)
 
 
     def __getitem__(self, idx) -> dict:
@@ -175,10 +176,12 @@ def replace_path_ending(path: str) -> str:
     return os.path.splitext(path)[0] + ".npy"
 
 class HmapDataset(Dataset):
-    def __init__(self, data_dir, targets_path, transform_mode: str = "default", target_transform: Any = None):
+    def __init__(self, data_dir, targets_path, data_paths: list[str] = None, transform_mode: str = "default", target_transform: Any = None):
 
         self.targets = pd.read_csv(targets_path)
         self.targets['path'] = self.targets['path'].map(lambda path: replace_path_ending(path))
+        if data_paths is not None: # if a list of data paths is provided, only use those
+            self.targets = self.targets[self.targets['path'].isin(data_paths)]
         self.data_dir = data_dir
    
         if transform_mode == ("default" or None):
@@ -204,6 +207,7 @@ class HmapDataset(Dataset):
         hmap_path = os.path.join(self.data_dir, self.targets.iloc[idx, 0])
 
         hmap = np.load(hmap_path)
+        hmap = torch.from_numpy(hmap).type(torch.float32).unsqueeze(0)  # load the height map and add a channel dimension
         
         
         if self.transform:
@@ -215,7 +219,7 @@ class HmapDataset(Dataset):
     
         
     def __len__(self):        
-        return len(self.processed_paths)
+        return len(self.targets)
 
 # class ImageDataset(ImageFolder):
 #     def __init__(self, data_dir: str, targets_path: str, *args: Any, **kwargs: Any) -> None:
