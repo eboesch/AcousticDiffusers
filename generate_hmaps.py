@@ -65,7 +65,10 @@ if __name__ == "__main__":
 
     
 
-    output_dir = "hmaps/"
+    output_dir = "hmaps_png/"
+    ht = 0.07
+    h_min = -ht
+    h_max = ht
 
     # Only process images that have coefficients
     processed_paths = list(set(targets['path'].tolist()))
@@ -81,16 +84,26 @@ if __name__ == "__main__":
     # ]
 
     for path in tqdm(image_paths):
-        img_dir = path.split("/")[0]
+        img_dir = path.split("/")[1]
         os.makedirs(os.path.join(output_dir, img_dir), exist_ok=True)
         file = path.split("/")[-1].split(".")[0]
-        output_path = os.path.join(output_dir, img_dir, f"{file}.npy")
+        # output_path = os.path.join(output_dir, img_dir, f"{file}.npy")
+        # output_path = os.path.join(output_dir, img_dir, f"{file}.jpeg")
+        output_path = os.path.join(output_dir, img_dir, f"{file}.png")
         if Path(output_path).exists():
             print(f"Skipping {output_path}, already exists.")
             continue
 
         hmap = height_map_pipeline(path, device=device)
-        np.save(output_path, hmap)
+        
+        # normalize height map to 0-255
+        hmap = (hmap - h_min)/(h_max - h_min) * 255
+
+        im = Image.fromarray(hmap,)
+        im = im.convert("L") # convert image to greyscale
+        # im.save(output_path, quality=95)
+        im.save(output_path, compress=0)
+        # np.save(output_path, hmap)
 
 
 
