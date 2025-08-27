@@ -24,6 +24,7 @@ from neuralop.losses import LpLoss
 from neuralop.training.training_state import load_training_state, save_training_state
 
 from neuralop.models import FNO
+from models.models import MRE
 
 class FNOtoScalar(nn.Module):
     def __init__(self, n_freqs, hidden_channels=32):
@@ -38,7 +39,7 @@ class FNOtoScalar(nn.Module):
         self.pool = nn.AdaptiveAvgPool2d(1)  # integrate over domain
         self.fc = nn.Linear(hidden_channels, n_freqs)
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         # x: (batch, 1, H, W)
         latent = self.fno(x)                 # (batch, hidden, H, W)
         pooled = self.pool(latent)           # (batch, hidden, 1, 1)
@@ -347,7 +348,7 @@ class CustomTrainer(Trainer):
         msg = ""
         for metric, value in eval_metrics.items():
             if isinstance(value, float) or isinstance(value, torch.Tensor):
-                msg += f"{metric}={value:.4f}, "
+                msg += f"{metric}={value:.4e}, "
             if self.wandb_log:
                 values_to_log[metric] = value       
         
@@ -360,3 +361,30 @@ class CustomTrainer(Trainer):
             wandb.log(data=values_to_log,
                       step=epoch+1,
                       commit=True)
+            
+
+
+
+class FNO_MSE(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.loss = nn.MSELoss()
+
+    def forward(self, y_pred, y, **kwargs):
+        return self.loss(y_pred, y)
+
+class FNO_MAE(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.loss = nn.L1Loss()
+
+    def forward(self, y_pred, y, **kwargs):
+        return self.loss(y_pred, y)
+    
+class FNO_MRE(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.loss = MRE()
+
+    def forward(self, y_pred, y, **kwargs):
+        return self.loss(y_pred, y)
