@@ -5,7 +5,7 @@ import torch.optim as optim
 from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from typing import Tuple, Union
+from typing import Tuple, Union, Dict, Any
 import math
 import numpy as np
 
@@ -105,12 +105,21 @@ class MRE(nn.Module):
     """
     Mean Relative Error
     """
-    def __init__(self, eps=1e-8):
+    def __init__(self, reduction='mean', eps=1e-8):
         super(MRE, self).__init__()
+        assert reduction in ['mean', 'sum', 'none'], "reduction must be one of 'mean', 'sum', or 'none'"
+        
+        self.reduction = reduction
         self.eps = eps
     
     def forward(self, pred, target):
-        return torch.mean(torch.abs((target - pred)) / (torch.abs(target) + self.eps)) * 100
+        elementwise_loss = torch.abs((target - pred)) / (torch.abs(target) + self.eps)
+        if self.reduction == 'mean':
+            return torch.mean(elementwise_loss)*100
+        elif self.reduction == 'sum':
+            return torch.sum(elementwise_loss)*100
+        else:
+            return elementwise_loss*100
     
 def compute_derivatives(u, domain_size_x=2.0, domain_size_y=2.0, domain_size_z=2.0):
     """
@@ -181,13 +190,16 @@ class PDEloss(nn.Module):
         return torch.mean(pde**2)
 
 
-def test(test_loader, model, loss_fcts, target_transform, device):
+def test_batchwise(test_loader: DataLoader, model: nn.Module, loss_fcts: Dict[str, Any], target_transform: Any=None, device: str='cpu'):
     # Set the model to evaluation mode
     model.eval()
-    losses = np.zeros(len(loss_fcts))
 
-    batch_size = 16
-    output_size = 17
+    batch_size = test_loader.batch_size
+    output_size = test_loader.dataset[0][1].shape[0]
+    
+    losses = {key: 0.0 for key in loss_fcts}
+
+
     last_out = torch.zeros((batch_size, output_size)).to(device)
     n_outputs = 0
     with torch.no_grad():
@@ -199,19 +211,73 @@ def test(test_loader, model, loss_fcts, target_transform, device):
                 output = target_transform.inverse(output)
                 target = target_transform.inverse(target)
             
-            for idx, loss in enumerate(loss_fcts):
-                losses[idx] += loss(output, target).item()
+            # for idx, loss in enumerate(loss_fcts):
+            #     losses[idx] += loss(output, target).item()
+            for key in loss_fcts:
+                loss = loss_fcts[key]
+                losses[key] += loss(output, target).item() 
 
             out_batch_size = output.shape[0]
             if (output - last_out[:out_batch_size, :]).any():
                 n_outputs += 1
             last_out = output
             
-    losses /= len(test_loader)
+    # losses /= len(test_loader)
+    losses =  {k: v / len(test_loader) for k, v in losses.items()}
     print(f"number of distinct outputs: {n_outputs}")
 
     return losses    
 
 
 
+def test(test_loader: DataLoader, model: nn.Module, loss_fcts: Dict[str, Any], target_transform: Any=None, device: str='cpu', return_preds: bool=False, return_targets: bool=False):
+    
+    model.eval()
 
+    preds = []
+    targets = []
+
+    batch_size = test_loader.batch_size
+    output_size = test_loader.dataset[0][1].shape[0]
+
+    last_out = torch.zeros((batch_size, output_size)).to(device)
+    n_outputs = 0
+    with torch.no_grad():
+        for data, target in tqdm(test_loader):
+            
+            data, target = data.to(device), target.to(device)
+            output = model(data)
+            
+            if target_transform:
+                output = target_transform.inverse(output)
+                target = target_transform.inverse(target)
+            
+            
+            targets.append(target)
+            preds.append(output)
+
+
+            out_batch_size = output.shape[0]
+            if (output - last_out[:out_batch_size, :]).any():
+                n_outputs += 1
+                # print(f"number of distinct outputs: {n_outputs}")
+                # print(f"output: {output}")
+            last_out = output
+
+
+    preds = torch.cat(preds, dim=0)
+    targets = torch.cat(targets, dim=0)
+
+    losses = {}#np.zeros(len(loss_fcts))        
+    for key in loss_fcts:
+        loss = loss_fcts[key]
+        losses.update({key: loss(preds, targets).item() })
+
+    if return_preds and return_targets:
+        return losses, preds, targets
+    elif return_preds:
+        return losses, preds
+    elif return_targets:
+        return losses, targets
+    else:
+        return losses

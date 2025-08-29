@@ -4,7 +4,7 @@ import torch.optim as optim
 from torch.optim.lr_scheduler import StepLR, ReduceLROnPlateau
 from torch.utils.data import DataLoader, random_split
 from dataset import ImageDataset, HmapDataset, normalize_target
-from models.models import CNN, train, test, MRE
+from models.models import CNN, train, test, MRE, test_batchwise
 import pandas as pd
 import logging
 from datetime import datetime
@@ -113,7 +113,7 @@ if __name__ == "__main__":
     mse_eval_loss_fct = nn.MSELoss()
     mae_eval_loss_fct = nn.L1Loss()
     rel_eval_loss_fct = MRE()
-    # loss_fct = MRE()
+    eval_losses = {"MSE": mse_eval_loss_fct, "MAE": mae_eval_loss_fct, "MRE": rel_eval_loss_fct}
 
     logger.info("Model: %s", model)
     logger.info("Using MAE training loss")
@@ -142,10 +142,10 @@ if __name__ == "__main__":
         logger.info(f"Epoch {epoch+1}")
         
         train(model, train_loader, loss_fct, optimizer, log_interval, logger, device)
-        val_losses = test(val_loader, model, [mse_eval_loss_fct, mae_eval_loss_fct, rel_eval_loss_fct], target_transform, device)
+        val_losses = test(val_loader, model, eval_losses, dataset.target_transform, device)
 
-        logger.info(f'MSE Validation Loss: {val_losses[0]:.4e},   MAE Validation Loss: {val_losses[1]:.4e},   Relative Validation Loss: {val_losses[2]:.4f}')
-        print(f'MSE Validation Loss: {val_losses[0]:.4e},   MAE Validation Loss: {val_losses[1]:.4e},   Relative Validation Loss: {val_losses[2]:.4f}')
+        logger.info(f'MSE Validation Loss: {val_losses["MSE"]:.4e},   MAE Validation Loss: {val_losses["MAE"]:.4e},   Relative Validation Loss: {val_losses["MRE"]:.4f}')
+        print(f'MSE Validation Loss: {val_losses["MSE"]:.4e},   MAE Validation Loss: {val_losses["MAE"]:.4e},   Relative Validation Loss: {val_losses["MRE"]:.4f}')
     
         # logger.info(f"Last learning rate: {scheduler.get_last_lr()}")
         # scheduler.step(val_losses[2])
@@ -159,6 +159,6 @@ if __name__ == "__main__":
     # if save_model:
     #     model.load_state_dict(torch.load(model_path, weights_only=True))  # load the saved best model
     #     model = model.to(device)
-    test_losses = test(test_loader, model, [mse_eval_loss_fct, mae_eval_loss_fct, rel_eval_loss_fct], target_transform, device)
-    logger.info(f'MSE Evaluation loss: {test_losses[0]:.4e},   MAE Evaluation loss: {test_losses[1]:.4e},   Relative Evaluation Loss: {test_losses[2]:.4f}')
-    print(f'MSE Evaluation loss: {test_losses[0]:.4e},   MAE Evaluation loss: {test_losses[1]:.4e},   Relative Evaluation Loss: {test_losses[2]:.4f}')
+    test_losses = test(test_loader, model, eval_losses, dataset.target_transform, device)
+    logger.info(f'MSE Evaluation loss: {test_losses["MSE"]:.4e},   MAE Evaluation loss: {test_losses["MAE"]:.4e},   Relative Evaluation Loss: {test_losses["MRE"]:.4f}')
+    print(f'MSE Evaluation loss: {test_losses["MSE"]:.4e},   MAE Evaluation loss: {test_losses["MAE"]:.4e},   Relative Evaluation Loss: {test_losses["MRE"]:.4f}')
