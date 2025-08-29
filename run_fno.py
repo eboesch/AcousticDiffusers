@@ -13,11 +13,12 @@ from neuralop.utils import count_model_params
 import pandas as pd
 import logging
 from datetime import datetime
-from dataset import DictImageDataset, target_pad
-from custom_fno import CustomTrainer, FNOtoScalar, FNO_MAE, FNO_MSE, FNO_MRE
+from dataset import DictImageDataset, target_pad, normalize_target
+from custom_fno import CustomTrainer, FNOtoScalar, FNO_MAE, FNO_MSE, FNO_MRE, FNO_CNN
 
 import matplotlib.pyplot as plt
 import sys
+import os
 import wandb
 
 
@@ -65,13 +66,29 @@ if __name__ == "__main__":
    # df = pd.read_csv(targets_path)
    # processed_paths = list(set(df['path'].tolist()))
 
+   hmap_dir = 'hmaps/'
+   hmap_paths = [
+      os.path.join(root, file)
+      for root, _, files in os.walk(hmap_dir)
+      for file in files
+      if file.lower().endswith('.npy')
+   ]
+
+   hmap_paths = [path.replace(hmap_dir, "") for path in hmap_paths]
+   img_paths = [path.replace('.npy', '.JPEG') for path in hmap_paths]
+
    logger.info("Creating Dataset...")
    transform_mode="pipeline"
    logger.info("Using %s transform", transform_mode)
-   target_transform_mode="pad"
+   # target_transform_mode="pad"
+   # logger.info("Using %s target transform", target_transform_mode)
+   target_transform_mode="normalize"
    logger.info("Using %s target transform", target_transform_mode)
    dataset = DictImageDataset(data_dir, targets_path, transform_mode=transform_mode)#, target_transform=target_pad)
    logger.info(f"Using Image Dataset with {len(dataset)} samples")
+   mean, std = dataset.calculate_stats()
+   target_transform = normalize_target(means=mean, stds=std)
+   dataset.set_target_transform(target_transform)
 
    # Split Dataset
    train_ratio = 0.7
@@ -80,6 +97,8 @@ if __name__ == "__main__":
 
    generator = torch.Generator().manual_seed(seed)
    train_dataset, val_dataset, test_dataset = random_split(dataset, [train_ratio, val_ratio, test_ratio], generator=generator)
+   input_shape = list(train_dataset[0]["x"].shape)
+   output_size = int(train_dataset[0]["y"].shape[0])
 
    # Set up Dataloaders 
    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
@@ -100,6 +119,7 @@ if __name__ == "__main__":
    logger.info("Creating Model and Trainer...")
    # model = TFNO(n_modes=(16, 16), hidden_channels=64, in_channels=3, out_channels=1)
    model = FNOtoScalar(n_freqs=17, hidden_channels=32)
+   # model = FNO_CNN(input_shape=input_shape, output_size=output_size)
 
    # you can improve the previous models by simply using a Tucker Tensorized FNO with just a few parameters
    # model = TFNO(n_modes=(16, 16), hidden_channels=64,
@@ -127,16 +147,18 @@ if __name__ == "__main__":
    optimizer = AdamW(model.parameters(),
                            lr=lr,
                            weight_decay=weight_decay)
+
    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=30)
 
-   l2loss = LpLoss(d=2, p=2)
-   h1loss = H1Loss(d=2)
+   l2loss = LpLoss(d=1, p=2)
+   l1loss = LpLoss(d=1, p=1)
+   h1loss = H1Loss(d=1)
    mseloss = FNO_MSE()
    maeloss = FNO_MAE()
    relloss = FNO_MRE()
 
    train_loss = l2loss
-   eval_losses = {"H1": h1loss, "L2": l2loss, "MSE": mseloss, "MAE": maeloss, "MRE": relloss}
+   eval_losses = {"H1": h1loss, "L1": l1loss, "L2": l2loss, "MSE": mseloss, "MAE": maeloss, "MRE": relloss}
 
 
    logger.info(f'### MODEL ###\n {model}')

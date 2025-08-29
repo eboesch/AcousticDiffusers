@@ -24,7 +24,7 @@ from neuralop.losses import LpLoss
 from neuralop.training.training_state import load_training_state, save_training_state
 
 from neuralop.models import FNO
-from models.models import MRE
+from models.models import MRE, CNN
 
 class FNOtoScalar(nn.Module):
     def __init__(self, n_freqs, hidden_channels=32):
@@ -46,6 +46,43 @@ class FNOtoScalar(nn.Module):
         pooled = pooled.view(pooled.size(0), -1)  # (batch, hidden)
         out = self.fc(pooled)                # (batch, n_freqs)
         return out
+    
+class FNO_CNN(CNN):
+    def __init__(
+        self,
+        input_shape,
+        output_size: int, 
+        cnn_out_channels_1: int = 16,
+        cnn_out_channels_2: int = 32,
+        cnn_kernel_size: int = 3,
+        cnn_stride: int = 1,
+        cnn_padding: int = 0,
+        pool_kernel_size: int = 2,
+        pool_stride: int = 2,
+        dropout_rate_1: int = 0.25,
+        dropout_rate_2: int = 0.5,
+        linear_size: int = 64
+    ):
+        super().__init__(
+            input_shape=input_shape,
+            output_size=output_size, 
+            cnn_out_channels_1=cnn_out_channels_1,
+            cnn_out_channels_2=cnn_out_channels_2,
+            cnn_kernel_size=cnn_kernel_size,
+            cnn_stride=cnn_stride,
+            cnn_padding=cnn_padding,
+            pool_kernel_size=pool_kernel_size,
+            pool_stride=pool_stride,
+            dropout_rate_1=dropout_rate_1,
+            dropout_rate_2=dropout_rate_2,
+            linear_size=linear_size
+        )
+        
+    def forward(self, x, **kwargs):
+        # x: (batch, 1, H, W)
+        out = super().forward(x)
+        return out
+            
 
 
 class CustomTrainer(Trainer):
@@ -297,7 +334,7 @@ class CustomTrainer(Trainer):
         # LR scheduler step
         if isinstance(self.scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
             self.scheduler.step(train_err)
-        else:
+        elif self.scheduler is not None:
             self.scheduler.step()
 
         # time for epoch
@@ -364,27 +401,37 @@ class CustomTrainer(Trainer):
             
 
 
-
-class FNO_MSE(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.loss = nn.MSELoss()
-
-    def forward(self, y_pred, y, **kwargs):
-        return self.loss(y_pred, y)
-
-class FNO_MAE(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.loss = nn.L1Loss()
-
-    def forward(self, y_pred, y, **kwargs):
-        return self.loss(y_pred, y)
     
-class FNO_MRE(nn.Module):
-    def __init__(self):
+class FNO_MSE(nn.Module):
+    def __init__(self, d=1, reduction='sum'):
         super().__init__()
-        self.loss = MRE()
+        self.d = d
+        self.reduction = reduction
+        self.loss = nn.MSELoss(reduction="none")
 
     def forward(self, y_pred, y, **kwargs):
-        return self.loss(y_pred, y)
+        y_pred_flat = torch.flatten(y_pred, start_dim=-self.d)
+        y_flat = torch.flatten(y, start_dim=-self.d)
+
+        elementwise_loss = self.loss(y_pred_flat, y_flat)
+
+        batchwise_loss = torch.mean(elementwise_loss, dim=-1)
+
+        if self.reduction == 'sum':
+            loss = torch.sum(batchwise_loss)
+        else:
+            loss = torch.mean(batchwise_loss)
+        
+        return loss.squeeze()
+    
+class FNO_MAE(FNO_MSE):
+    def __init__(self):
+        super().__init__()
+        self.loss = nn.L1Loss(reduction="none")
+
+
+
+class FNO_MRE(FNO_MSE):
+    def __init__(self):
+        super().__init__()
+        self.loss = MRE(reduction="none")
