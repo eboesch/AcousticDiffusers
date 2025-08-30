@@ -24,7 +24,8 @@ from neuralop.losses import LpLoss
 from neuralop.training.training_state import load_training_state, save_training_state
 
 from neuralop.models import FNO
-from models.models import MRE, CNN
+from models.models import CNN
+from utils import MRE, PDEloss, compute_derivatives_2D, compute_diffusion_coeffs
 
 class FNOtoScalar(nn.Module):
     def __init__(self, n_freqs, hidden_channels=32):
@@ -400,7 +401,189 @@ class CustomTrainer(Trainer):
                       commit=True)
             
 
+ALL_FREQ_BANDS = [100, 125, 160, 200, 250, 315, 400, 500, 630, 800, 1000, 1250, 1600, 2000, 2500, 3150, 4000]
 
+class PhysicsTrainer(CustomTrainer):
+    # def __init__(
+    #     self,
+    #     *,
+    #     model: nn.Module,
+    #     n_epochs: int,
+    #     log_interval: int, 
+    #     logger,
+    #     device: str='cpu',
+    #     mixed_precision: bool=False,
+    #     data_processor: nn.Module=None,
+    #     eval_interval: int=1,
+    #     log_output: bool=False,
+    #     use_distributed: bool=False,
+    #     verbose: bool=False,
+    # ):
+    #     """
+    #     Parameters
+    #     ----------
+    #     model : nn.Module
+    #     n_epochs : int
+    #     wandb_log : bool, default is False
+    #         whether to log results to wandb
+    #     device : torch.device, or str 'cpu' or 'cuda'
+    #     mixed_precision : bool, default is False
+    #         whether to use torch.autocast to compute mixed precision
+    #     data_processor : DataProcessor class to transform data, default is None
+    #         if not None, data from the loaders is transform first with data_processor.preprocess,
+    #         then after getting an output from the model, that is transformed with data_processor.postprocess.
+    #     eval_interval : int, default is 1
+    #         how frequently to evaluate model and log training stats
+    #     log_output : bool, default is False
+    #         if True, and if wandb_log is also True, log output images to wandb
+    #     use_distributed : bool, default is False
+    #         whether to use DDP
+    #     verbose : bool, default is False
+    #     """
+
+    #     super().__init__(model=model,
+    #     n_epochs=n_epochs,
+    #     log_interval=log_interval, 
+    #     logger=logger,
+    #     device=device,
+    #     mixed_precision=mixed_precision,
+    #     data_processor=data_processor,
+    #     eval_interval=eval_interval,
+    #     log_output=log_output,
+    #     use_distributed=use_distributed,
+    #     verbose=verbose)
+    
+
+    def train_one_batch(self, idx, sample, training_loss):
+        """Run one batch of input through model
+           and return training loss on outputs
+
+        Parameters
+        ----------
+        idx : int
+            index of batch within train_loader
+        sample : dict
+            data dictionary holding one batch
+
+        Returns
+        -------
+        loss: float | Tensor
+            float value of training loss
+        """
+
+        self.optimizer.zero_grad(set_to_none=True)
+        if self.regularizer:
+            self.regularizer.reset()
+
+        # preprossess/load data
+        if self.data_processor is not None:
+            sample = self.data_processor.preprocess(sample)
+        else:
+            # load data to device if no preprocessor exists
+            sample = {
+                k: v.to(self.device)
+                for k, v in sample.items()
+                if torch.is_tensor(v)
+            }
+
+        self.n_samples += sample["y"].shape[0]
+
+        # forward pass
+        if self.mixed_precision:
+            with torch.autocast(device_type=self.autocast_device_type):
+                out = self.model(**sample)
+        else:
+            out = self.model(**sample)
+        
+        if self.epoch == 0 and idx == 0 and self.verbose:
+            print(f"Raw outputs of shape {out.shape}")
+
+        # postprocess outputs
+        if self.data_processor is not None:
+            out, sample = self.data_processor.postprocess(out, sample)
+
+        loss = 0.0
+        lmbda = 1.0
+        # sample['x'].shape: batch, 3, H, W
+        # sample['y'].shape: batch, n_freqs
+        # out.shape: batch, n_freqs, H, W
+
+        # compute loss
+        if self.mixed_precision:
+            with torch.autocast(device_type=self.autocast_device_type):
+                loss += training_loss(out, **sample)
+        else:
+            # compute PDE loss for each frequency band
+            for i in range(sample['y'].shape[1]):
+                pde_l = PDEloss(out[:, i, :, :], ALL_FREQ_BANDS[i])
+                loss += lmbda * pde_l
+
+            # compute coeffs
+            coeff_pred = compute_diffusion_coeffs(out)
+            loss += training_loss(coeff_pred, **sample)
+
+        if self.regularizer:
+            loss += self.regularizer.loss
+        
+        return loss
+    
+    def eval_one_batch(self,
+                       sample: dict,
+                       eval_losses: dict,
+                       return_output: bool=False):
+        """eval_one_batch runs inference on one batch
+        and returns eval_losses for that batch.
+
+        Parameters
+        ----------
+        sample : dict
+            data batch dictionary
+        eval_losses : dict
+            dictionary of named eval metrics
+        return_outputs : bool
+            whether to return model outputs for plotting
+            by default False
+        Returns
+        -------
+        eval_step_losses : dict
+            keyed "loss_name": step_loss_value for each loss name
+        outputs: torch.Tensor | None
+            optionally returns batch outputs
+        """
+        # preprossess/load data
+        if self.data_processor is not None:
+            sample = self.data_processor.preprocess(sample)
+        else:
+            # load data to device if no preprocessor exists
+            sample = {
+                k: v.to(self.device)
+                for k, v in sample.items()
+                if torch.is_tensor(v)
+            }
+
+        self.n_samples += sample["y"].size(0)
+
+        out = self.model(**sample)
+
+        if self.data_processor is not None:
+            out, sample = self.data_processor.postprocess(out, sample)
+        out = compute_diffusion_coeffs(out)
+
+        eval_step_losses = {}
+
+        # compute all eval losses
+        for loss_name, loss in eval_losses.items():
+            val_loss = loss(out, **sample)
+            eval_step_losses[loss_name] = val_loss
+        
+        if return_output:
+            return eval_step_losses, out
+        else:
+            return eval_step_losses, None
+    
+
+
+# Losses ----------------------------------------------------------------------------------------
     
 class FNO_MSE(nn.Module):
     def __init__(self, d=1, reduction='sum'):
@@ -428,8 +611,6 @@ class FNO_MAE(FNO_MSE):
     def __init__(self):
         super().__init__()
         self.loss = nn.L1Loss(reduction="none")
-
-
 
 class FNO_MRE(FNO_MSE):
     def __init__(self):

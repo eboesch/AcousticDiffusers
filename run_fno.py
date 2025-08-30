@@ -14,7 +14,7 @@ import pandas as pd
 import logging
 from datetime import datetime
 from dataset import DictImageDataset, target_pad, normalize_target
-from custom_fno import CustomTrainer, FNOtoScalar, FNO_MAE, FNO_MSE, FNO_MRE, FNO_CNN
+from custom_fno import CustomTrainer, PhysicsTrainer, FNOtoScalar, FNO_MAE, FNO_MSE, FNO_MRE, FNO_CNN
 
 import matplotlib.pyplot as plt
 import sys
@@ -45,7 +45,7 @@ if __name__ == "__main__":
    lr = 8e-3
    weight_decay = 1e-4
    log_interval = 100
-   save_model = False
+   save_model = True
    model_path = f"logs/{timestamp}_model.pth"
 
    logger.info(f"lr: {lr}")
@@ -117,8 +117,8 @@ if __name__ == "__main__":
 
    # create FNO model
    logger.info("Creating Model and Trainer...")
-   # model = TFNO(n_modes=(16, 16), hidden_channels=64, in_channels=3, out_channels=1)
-   model = FNOtoScalar(n_freqs=17, hidden_channels=32)
+   model = TFNO(n_modes=(16, 16), hidden_channels=32, in_channels=3, out_channels=17)
+   # model = FNOtoScalar(n_freqs=17, hidden_channels=32)
    # model = FNO_CNN(input_shape=input_shape, output_size=output_size)
 
    # you can improve the previous models by simply using a Tucker Tensorized FNO with just a few parameters
@@ -132,7 +132,16 @@ if __name__ == "__main__":
    
    
    # Create the trainer
-   trainer = CustomTrainer(model=model, 
+   # trainer = CustomTrainer(model=model, 
+   #                      n_epochs=epochs,
+   #                      log_interval=log_interval,
+   #                      logger=logger,
+   #                      device=device, 
+   #                      data_processor=DefaultDataProcessor().to(device),
+   #                      eval_interval=1,
+   #                      use_distributed=False,
+   #                      verbose=True)
+   trainer = PhysicsTrainer(model=model, 
                         n_epochs=epochs,
                         log_interval=log_interval,
                         logger=logger,
@@ -187,10 +196,10 @@ if __name__ == "__main__":
    trainer.evaluate_all(epoch=epochs,
                          eval_losses=eval_losses,
                          test_loaders={"test_data": test_loader})
-   """  
+     
    # save the weights of the trained model:
-   model.save_checkpoint(save_folder='./checkpoints/', save_name='example_fno')
+   model.save_checkpoint(save_folder='logs/', save_name='example_fno')
 
    # load saved weights
-   model = FNO.from_checkpoint(save_folder='./checkpoints/', save_name='example_fno')
-   """
+   # model = FNO.from_checkpoint(save_folder='./checkpoints/', save_name='example_fno')
+   
