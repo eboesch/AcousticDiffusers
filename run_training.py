@@ -4,7 +4,8 @@ import torch.optim as optim
 from torch.optim.lr_scheduler import StepLR, ReduceLROnPlateau
 from torch.utils.data import DataLoader, random_split
 from dataset import ImageDataset, HmapDataset, normalize_target
-from models.models import CNN, train, test, MRE, test_batchwise
+from models.models import CNN, train, test, test_batchwise
+from utils import MRE
 import pandas as pd
 import logging
 from datetime import datetime
@@ -45,7 +46,7 @@ if __name__ == "__main__":
     torch.manual_seed(seed)
 
     data_dir = "mini_imagenet/"
-    hmap_dir = "hmaps/"
+    hmap_dir = "hmaps_png/"
     targets_path = "mini_imagenet/coeffs.csv"
 
     df = pd.read_csv(targets_path)
@@ -68,15 +69,28 @@ if __name__ == "__main__":
     img_paths = [path.replace('.npy', '.JPEG') for path in hmap_paths]
 
 
+    dataset_type = "hmap"  # "hmap" or "image"
+    dataset_len = "full"  # "full" or "mini"
+
+
     logger.info("Creating Dataset...")
     transform_mode="pipeline"
     logger.info("Using %s transform", transform_mode)
     target_transform_mode="normalize"
     logger.info("Using %s target transform", target_transform_mode)
-    dataset = ImageDataset(data_dir, targets_path, img_paths, transform_mode=transform_mode)
-    logger.info(f"Using Image Dataset with {len(dataset)} samples")
-    # dataset = HmapDataset(hmap_dir, targets_path, hmap_paths)
-    # logger.info(f"Using Hmap Dataset with {len(dataset)} samples")
+
+    if dataset_type == "image":
+        if dataset_len == "mini":
+            dataset = ImageDataset(data_dir, targets_path, img_paths, transform_mode=transform_mode)
+        elif dataset_len == "full":
+            dataset = ImageDataset(data_dir, targets_path, transform_mode=transform_mode)
+    elif dataset_type == "hmap":
+        if dataset_len == "mini":
+            dataset = HmapDataset(hmap_dir, targets_path, hmap_paths)#, transform_mode=transform_mode)
+        elif dataset_len == "full":
+            dataset = HmapDataset(hmap_dir, targets_path)#, transform_mode=transform_mode)
+    logger.info(f"Using {dataset_len} {dataset_type} Dataset with {len(dataset)} samples")
+
     mean, std = dataset.calculate_stats()
     target_transform = normalize_target(means=mean, stds=std)
     dataset.set_target_transform(target_transform)
