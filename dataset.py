@@ -23,8 +23,8 @@ class RotateToLandscape(torch.nn.Module):
         return image
 
 
-# size = 256
-size = 375
+size = 256
+# size = 375
 
 
 
@@ -78,7 +78,7 @@ def target_pad(target):
     return torch.nn.functional.pad(target, (0, size - target.shape[1], 0, size - target.shape[0]), mode='constant', value=0.0)
 
 
-def default_loader(path: str) -> Any:
+def default_rgb_loader(path: str) -> Any:
     # use a torch vision function to decode
     image = io.decode_image(path, mode=io.ImageReadMode.RGB)
     
@@ -91,9 +91,19 @@ def default_loader(path: str) -> Any:
 
     return image
 
+def default_gray_loader(path: str) -> Any:
+    # use a torch vision function to decode grayscale image
+    image = io.decode_image(path, mode=io.ImageReadMode.GRAY)
+
+    return image
+
+def default_npy_loader(path: str) -> Any:
+    hmap = np.load(path)
+    hmap = torch.from_numpy(hmap).type(torch.float32).unsqueeze(0)  # load the height map and add a channel dimension
+    return hmap
 
 class ImageDataset(Dataset):
-    def __init__(self, data_dir, targets_path, data_paths: list[str] = None, loader: Callable[[str], Any] = default_loader, transform_mode: str = "default", target_transform: Any = None):
+    def __init__(self, data_dir, targets_path, data_paths: list[str] = None, loader: Callable[[str], Any] = default_rgb_loader, transform_mode: str = "default", target_transform: Any = None):
 
         self.targets = pd.read_csv(targets_path)
         if data_paths is not None: # if a list of data paths is provided, only use those
@@ -152,74 +162,40 @@ class ImageDataset(Dataset):
 
 
 class DictImageDataset(ImageDataset):
-    def __init__(self, data_dir, targets_path, data_paths: list[str] = None, loader: Callable[[str], Any] = default_loader, transform_mode: str = "default", target_transform: Any = None):
+    def __init__(self, data_dir, targets_path, data_paths: list[str] = None, loader: Callable[[str], Any] = default_rgb_loader, transform_mode: str = "default", target_transform: Any = None):
          super().__init__(data_dir, targets_path, data_paths, loader, transform_mode, target_transform)
 
 
     def __getitem__(self, idx) -> dict:
-        target = torch.tensor(self.targets.iloc[idx, 1:].to_numpy(dtype=np.float32))#, dtype = torch.float32)
-        img_path = os.path.join(self.data_dir, self.targets.iloc[idx, 0])
 
-        image = self.loader(img_path)
-        
-        if self.transform:
-            image = self.transform(image)
-        if self.target_transform:
-            target = self.target_transform(target)
+        image, target = super().__getitem__(idx)
 
         return {"x": image, "y": target}
     
-def replace_path_ending(path: str) -> str:
+def replace_path_ending(path: str, file_type: str='npy') -> str:
     """
-    Replace the ending of a file path with a new ending.
+    Replace the ending of a file path with a new ending `file_type`. E.g. change 'image.JPEG' to 'image.npy'.
     """
-    return os.path.splitext(path)[0] + ".npy"
+    return os.path.splitext(path)[0] + "." + file_type
 
-class HmapDataset(Dataset):
-    def __init__(self, data_dir, targets_path, data_paths: list[str] = None, transform_mode: str = "default", target_transform: Any = None):
-
-        self.targets = pd.read_csv(targets_path)
-        self.targets['path'] = self.targets['path'].map(lambda path: replace_path_ending(path))
-        if data_paths is not None: # if a list of data paths is provided, only use those
-            self.targets = self.targets[self.targets['path'].isin(data_paths)]
-        self.data_dir = data_dir
-   
-        if transform_mode == ("default" or None):
-            self.transform = None
-        elif transform_mode == "pipeline":
-            self.transform = pipeline_transform
-        else:
-            raise ValueError("Unknown transform type.")
+class HmapDataset(ImageDataset):
+    def __init__(self, data_dir, targets_path, data_paths: list[str] = None, file_type: str="png", transform_mode: str = "default", target_transform: Any = None):
         
-        self.target_transform = target_transform
+        super().__init__(data_dir, targets_path, data_paths=data_paths, loader=default_gray_loader, transform_mode=transform_mode, target_transform=target_transform)
 
-      
+        if file_type == 'npy':
+            self.loader = default_npy_loader 
+        self.targets['path'] = self.targets['path'].map(lambda path: replace_path_ending(path, file_type))
 
-    def calculate_stats(self):
-        means, stds = self.targets.iloc[:, 1:].mean().to_numpy(), self.targets.iloc[:, 1:].std().to_numpy()
-        return means, stds
-    
-    def set_target_transform(self, target_transform):
-        self.target_transform = target_transform
+class DictHmapDataset(HmapDataset):
+    def __init__(self, data_dir, targets_path, data_paths: list[str] = None, file_type: str="png", transform_mode: str = "default", target_transform: Any = None):
+         super().__init__(data_dir, targets_path, data_paths, file_type, transform_mode, target_transform)
 
-    def __getitem__(self, idx):
-        target = torch.tensor(self.targets.iloc[idx, 1:].to_numpy(dtype=np.float32))#, dtype = torch.float32)
-        hmap_path = os.path.join(self.data_dir, self.targets.iloc[idx, 0])
 
-        hmap = np.load(hmap_path)
-        hmap = torch.from_numpy(hmap).type(torch.float32).unsqueeze(0)  # load the height map and add a channel dimension
-        
-        
-        if self.transform:
-            image = self.transform(image)
-        if self.target_transform:
-            target = self.target_transform(target)
+    def __getitem__(self, idx) -> dict:        
+        image, target = super().__getitem__(idx)
+        return {"x": image, "y": target}
 
-        return hmap, target
-    
-        
-    def __len__(self):        
-        return len(self.targets)
 
 # class ImageDataset(ImageFolder):
 #     def __init__(self, data_dir: str, targets_path: str, *args: Any, **kwargs: Any) -> None:
@@ -253,7 +229,9 @@ if __name__ == "__main__":
     data_dir = "hmaps/"
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
-    dataset = HmapDataset(data_dir, targets_path)
+    dataset = HmapDataset(data_dir, targets_path, file_type='npy')
+    print(dataset[465])
+    dataset = HmapDataset("hmaps_png/", targets_path, file_type='png')
     print(dataset[465])
 
     t=0
