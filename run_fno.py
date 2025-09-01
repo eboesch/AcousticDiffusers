@@ -13,8 +13,9 @@ from neuralop.utils import count_model_params
 import pandas as pd
 import logging
 from datetime import datetime
-from dataset import DictImageDataset, target_pad, normalize_target
+from dataset import DictImageDataset, DictHmapDataset, target_pad, normalize_target
 from custom_fno import CustomTrainer, PhysicsTrainer, FNOtoScalar, FNO_MAE, FNO_MSE, FNO_MRE, FNO_CNN
+from utils import PDEloss
 
 import matplotlib.pyplot as plt
 import sys
@@ -35,7 +36,7 @@ if __name__ == "__main__":
       datefmt="%H:%M",
    )
    logger.info(
-      "--------------------------------------------\nStarting Script\n--------------------------------------------"
+      "--------------------------------------------\nStarting Script\nFNO to scalar\n--------------------------------------------"
    )
 
    # Training settings
@@ -44,12 +45,14 @@ if __name__ == "__main__":
    batch_size = 32
    lr = 8e-3
    weight_decay = 1e-4
+   lmbda = 1
    log_interval = 100
    save_model = True
    model_path = f"logs/{timestamp}_model.pth"
 
    logger.info(f"lr: {lr}")
    logger.info(f"weight_decay: {weight_decay}")
+   logger.info(f"lambda: {lmbda}")
    logger.info(f"batch_size: {batch_size}")
    logger.info(f"epochs: {epochs}")
    
@@ -66,16 +69,22 @@ if __name__ == "__main__":
    # df = pd.read_csv(targets_path)
    # processed_paths = list(set(df['path'].tolist()))
 
-   hmap_dir = 'hmaps/'
+   hmap_dir_png = 'hmaps_png/'
+   mini_hmap_dir = 'hmaps/'
    hmap_paths = [
       os.path.join(root, file)
-      for root, _, files in os.walk(hmap_dir)
+      for root, _, files in os.walk(mini_hmap_dir)
       for file in files
       if file.lower().endswith('.npy')
    ]
 
-   hmap_paths = [path.replace(hmap_dir, "") for path in hmap_paths]
+   hmap_paths = [path.replace(mini_hmap_dir, "") for path in hmap_paths]
    img_paths = [path.replace('.npy', '.JPEG') for path in hmap_paths]
+
+
+   dataset_type = "image"  # "hmap" or "image"
+   dataset_len = "full"  # "full" or "mini"
+
 
    logger.info("Creating Dataset...")
    transform_mode="pipeline"
@@ -84,8 +93,18 @@ if __name__ == "__main__":
    # logger.info("Using %s target transform", target_transform_mode)
    target_transform_mode="normalize"
    logger.info("Using %s target transform", target_transform_mode)
-   dataset = DictImageDataset(data_dir, targets_path, transform_mode=transform_mode)#, target_transform=target_pad)
-   logger.info(f"Using Image Dataset with {len(dataset)} samples")
+
+   if dataset_type == "image":
+      if dataset_len == "mini":
+         dataset = DictImageDataset(data_dir, targets_path, img_paths, transform_mode=transform_mode)#, target_transform=target_pad)
+      elif dataset_len == "full":
+         dataset = DictImageDataset(data_dir, targets_path, transform_mode=transform_mode)#, target_transform=target_pad)
+   elif dataset_type == "hmap":
+      if dataset_len == "mini":
+         dataset = DictHmapDataset(hmap_dir_png, targets_path, img_paths)#, target_transform=target_pad)
+      elif dataset_len == "full":
+         dataset = DictHmapDataset(hmap_dir_png, targets_path)
+   logger.info(f"Using {dataset_len} {dataset_type} Dataset with {len(dataset)} samples")
    mean, std = dataset.calculate_stats()
    target_transform = normalize_target(means=mean, stds=std)
    dataset.set_target_transform(target_transform)
@@ -165,6 +184,7 @@ if __name__ == "__main__":
    mseloss = FNO_MSE()
    maeloss = FNO_MAE()
    relloss = FNO_MRE()
+   physics_loss = PDEloss(reduction='mean', deriv_type='autograd')
 
    train_loss = l2loss
    eval_losses = {"H1": h1loss, "L1": l1loss, "L2": l2loss, "MSE": mseloss, "MAE": maeloss, "MRE": relloss}
@@ -174,9 +194,10 @@ if __name__ == "__main__":
    logger.info(f'### OPTIMIZER ###\n {optimizer}')
    logger.info(f'### SCHEDULER ###\n {scheduler}')
    losses_str = "### LOSSES ###\n"
-   losses_str += f" * Train: {train_loss}\n"
+   losses_str += f" * Train: {train_loss.name}\n"
+   losses_str += f" * Physics: {physics_loss.name}\n"
    losses_str += " * Eval:\n"
-   losses_str += "\n".join([f"    - {k}: {v}" for k, v in eval_losses.items()])
+   losses_str += "\n".join([f"    - {k}: {v.name}" for k, v in eval_losses.items()])
    logger.info(losses_str)
    sys.stdout.flush()
 
@@ -188,6 +209,8 @@ if __name__ == "__main__":
             scheduler=scheduler,
             regularizer=False,
             training_loss=train_loss,
+            physics_loss=physics_loss,
+            lmbda=lmbda,
             eval_losses=eval_losses)
 
 
