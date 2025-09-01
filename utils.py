@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
+import torch.autograd as autograd
 
 
 class MRE(nn.Module):
@@ -112,24 +113,79 @@ def compute_derivatives_2D(u, domain_size=2.0):
 
     return {'u': u, 'ux': ux, 'uxx': uxx, 'uy': uy, 'uyy': uyy}
 
-def PDEloss(u, freq, reduction='mean'):
-    derivs = compute_derivatives_2D(u, domain_size=100)
+# def laplacian(u, coords):
+#     grads = autograd.grad(u, coords, grad_outputs=torch.ones_like(u), create_graph=True)[0]
+#     d2x = autograd.grad(grads[:,0], coords, grad_outputs=torch.ones_like(grads[:,0]), create_graph=True)[0][:,0]
+#     d2y = autograd.grad(grads[:,1], coords, grad_outputs=torch.ones_like(grads[:,1]), create_graph=True)[0][:,1]
+#     return d2x + d2y
 
-    uxx = derivs['uxx']
-    uyy = derivs['uyy']
+class PDEloss(nn.Module):
+    def __init__(self, reduction='sum', deriv_type='spectral'):
+        super().__init__()
 
-    #TODO: figure out how to get the frequency from the input
-    # f = 100       # frequency in Hz
-    c = 343 # Speed of sound in m/s
-    k = 2*np.pi * freq / c # wavenumber
-    pde = uxx + uyy + k**2 *u
+        assert reduction in ['mean', 'sum', 'none'], "reduction must be one of 'mean', 'sum', or 'none'"
+        assert deriv_type in ['spectral', 'autograd', 'spherical'], "deriv_type must be one of 'naive', 'autograd', or 'spherical'"
+        self.reduction = reduction
+        self.deriv_type = deriv_type
 
-    if reduction=='sum':
-        return torch.sum(pde**2)
-    elif reduction=='mean':
-        return torch.mean(pde**2)
-    else:
-        return pde
+        if deriv_type == 'autograd':
+            x = torch.linspace(-50, 50, 256)
+            y = torch.linspace(-50, 50, 256)
+            xx, yy = torch.meshgrid(x, y, indexing="xy")
+            self.coords = torch.stack([xx.reshape(-1), yy.reshape(-1)], dim=1)  # (nx*ny, 2)
+            self.coords.requires_grad_(True)
+
+    @property
+    def name(self):
+        return f"PDE_{self.reduction}_reduction_{self.deriv_type}_loss"
+        
+    # def autograd_real_loss(self, u, freq):
+    #     lap_u = laplacian(u, self.coords)
+
+    #     c = 343 # Speed of sound in m/s
+    #     k = 2*np.pi * freq / c # wavenumber
+    #     if not torch.is_tensor(k):
+    #         k = torch.tensor(float(k), dtype=self.coords.dtype, device=self.coords.device).expand_as(u)
+    #     else:
+    #         # k = k.view(-1).expand_as(u) if k.numel() > 1 else 
+    #         k = k.expand_as(u)
+
+    #     pde = lap_u + k**2 * u
+
+    #     if self.reduction=='sum':
+    #         return torch.sum(pde**2)
+    #     elif self.reduction=='mean':
+    #         return torch.mean(pde**2)
+    #     else:
+    #         return pde
+
+
+    def fft_loss(self, u, freq):
+        """
+        freq: frequency in Hz
+        
+        """
+        derivs = compute_derivatives_2D(u, domain_size=100)
+
+        uxx = derivs['uxx']
+        uyy = derivs['uyy']
+
+        c = 343 # Speed of sound in m/s
+        k = 2*np.pi * freq / c # wavenumber
+        pde = uxx + uyy + k**2 * u
+
+        if self.reduction=='sum':
+            return torch.sum(pde**2)
+        elif self.reduction=='mean':
+            return torch.mean(pde**2)
+        else:
+            return pde
+        
+    def forward(self, u, freq):
+        if self.deriv_type == "spectral":
+            return self.fft_loss(u, freq)
+        elif self.deriv_type == 'autograd':
+            return self.autograd_real_loss(u, freq)
 
 class PDEloss3D(nn.Module):
     def __init__(self, device):

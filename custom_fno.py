@@ -452,7 +452,36 @@ class PhysicsTrainer(CustomTrainer):
     #     log_output=log_output,
     #     use_distributed=use_distributed,
     #     verbose=verbose)
-    
+
+    def train(
+        self,
+        train_loader,
+        test_loaders,
+        optimizer,
+        scheduler,
+        regularizer=None,
+        training_loss=None,
+        physics_loss=None,
+        eval_losses=None,
+        lmbda: float=1.0,
+        save_every: int=None,
+        save_best: int=None,
+        save_dir: Union[str, Path]="./ckpt",
+        resume_from_dir: Union[str, Path]=None,
+    ):
+        self.physics_loss = physics_loss
+        self.lmbda = lmbda
+        return super().train(train_loader,
+                            test_loaders,
+                            optimizer,
+                            scheduler,
+                            regularizer=regularizer,
+                            training_loss=training_loss,
+                            eval_losses=eval_losses,
+                            save_every=save_every,
+                            save_best=save_best,
+                            save_dir=save_dir,
+                            resume_from_dir=resume_from_dir)
 
     def train_one_batch(self, idx, sample, training_loss):
         """Run one batch of input through model
@@ -503,7 +532,7 @@ class PhysicsTrainer(CustomTrainer):
             out, sample = self.data_processor.postprocess(out, sample)
 
         loss = 0.0
-        lmbda = 1.0
+        
         # sample['x'].shape: batch, 3, H, W
         # sample['y'].shape: batch, n_freqs
         # out.shape: batch, n_freqs, H, W
@@ -513,14 +542,17 @@ class PhysicsTrainer(CustomTrainer):
             with torch.autocast(device_type=self.autocast_device_type):
                 loss += training_loss(out, **sample)
         else:
-            # compute PDE loss for each frequency band
-            for i in range(sample['y'].shape[1]):
-                pde_l = PDEloss(out[:, i, :, :], ALL_FREQ_BANDS[i])
-                loss += lmbda * pde_l
+            if self.physics_loss is not None:
+                # compute PDE loss for each frequency band
+                for i in range(sample['y'].shape[1]):
+                    pde_l = self.physics_loss(out[:, i, :, :], ALL_FREQ_BANDS[i])
+                    loss += self.lmbda * pde_l
 
-            # compute coeffs
-            coeff_pred = compute_diffusion_coeffs(out)
-            loss += training_loss(coeff_pred, **sample)
+                # compute coeffs
+                coeff_pred = compute_diffusion_coeffs(out)
+                loss += training_loss(coeff_pred, **sample)
+            else: 
+                loss += training_loss(out, **sample)
 
         if self.regularizer:
             loss += self.regularizer.loss
@@ -592,6 +624,10 @@ class FNO_MSE(nn.Module):
         self.reduction = reduction
         self.loss = nn.MSELoss(reduction="none")
 
+    @property
+    def name(self):
+        return f"MSE_{self.d}D_{self.reduction}_reduction_loss"
+
     def forward(self, y_pred, y, **kwargs):
         y_pred_flat = torch.flatten(y_pred, start_dim=-self.d)
         y_flat = torch.flatten(y, start_dim=-self.d)
@@ -612,7 +648,15 @@ class FNO_MAE(FNO_MSE):
         super().__init__()
         self.loss = nn.L1Loss(reduction="none")
 
+    @property
+    def name(self):
+        return f"MAE_{self.d}D_{self.reduction}_reduction_loss"    
+
 class FNO_MRE(FNO_MSE):
     def __init__(self):
         super().__init__()
         self.loss = MRE(reduction="none")
+
+    @property
+    def name(self):
+        return f"MRE_{self.d}D_{self.reduction}_reduction_loss"
