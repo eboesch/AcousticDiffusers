@@ -3,10 +3,12 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.optim.lr_scheduler import StepLR, ReduceLROnPlateau
 from torch.utils.data import DataLoader, random_split
-from dataset import ImageDataset, HmapDataset, normalize_target
+from torchvision.transforms import v2
+from dataset import ImageDataset, HmapDataset, normalize_target, pipeline_transform, default_img_transform
 from models.models import CNN, train, test, test_batchwise
-from utils import MRE
+from utils import MRE, read_list
 import pandas as pd
+import random
 import logging
 from datetime import datetime
 import os
@@ -44,71 +46,82 @@ if __name__ == "__main__":
     logger.info(f"epochs: {epochs}")
     
     torch.manual_seed(seed)
+    random.seed(seed)
 
     data_dir = "mini_imagenet/"
     hmap_dir = "hmaps_png/"
     targets_path = "mini_imagenet/coeffs.csv"
 
-    df = pd.read_csv(targets_path)
-    processed_paths = list(set(df['path'].tolist()))
+    # df = pd.read_csv(targets_path)
+    # processed_paths = list(set(df['path'].tolist()))
     
 
     device = torch.accelerator.current_accelerator().type if torch.cuda.is_available() else "cpu"
     logger.info("Using %s device", device)
 
     # create dataset
-
-    hmap_paths = [
-        os.path.join(root, file)
-        for root, _, files in os.walk(hmap_dir)
-        for file in files
-        if file.lower().endswith('.npy')
-    ]
-
-    hmap_paths = [path.replace(hmap_dir, "") for path in hmap_paths]
-    img_paths = [path.replace('.npy', '.JPEG') for path in hmap_paths]
-
+    logger.info("Creating Dataset...")
 
     dataset_type = "hmap"  # "hmap" or "image"
-    dataset_len = "full"  # "full" or "mini"
+    dataset_split = "pre_split"  # "pre_split", "random_split" or "mini"
 
+    train_paths = read_list('train_paths.txt')
+    val_paths = read_list('val_paths.txt')
+    test_paths = read_list('test_paths.txt')
 
-    logger.info("Creating Dataset...")
-    transform_mode="pipeline"
-    logger.info("Using %s transform", transform_mode)
-    target_transform_mode="normalize"
-    logger.info("Using %s target transform", target_transform_mode)
-
-    if dataset_type == "image":
-        if dataset_len == "mini":
-            dataset = ImageDataset(data_dir, targets_path, img_paths, transform_mode=transform_mode)
-        elif dataset_len == "full":
-            dataset = ImageDataset(data_dir, targets_path, transform_mode=transform_mode)
-    elif dataset_type == "hmap":
-        if dataset_len == "mini":
-            dataset = HmapDataset(hmap_dir, targets_path, hmap_paths)#, transform_mode=transform_mode)
-        elif dataset_len == "full":
-            dataset = HmapDataset(hmap_dir, targets_path)#, transform_mode=transform_mode)
-    logger.info(f"Using {dataset_len} {dataset_type} Dataset with {len(dataset)} samples")
-
-    mean, std = dataset.calculate_stats()
-    target_transform = normalize_target(means=mean, stds=std)
-    dataset.set_target_transform(target_transform)
-
-    # split data into train & test set
 
     train_ratio = 0.7
     val_ratio = 0.1
     test_ratio = 1-train_ratio-val_ratio
 
-    generator = torch.Generator().manual_seed(seed)
-    train_dataset, val_dataset, test_dataset = random_split(dataset, [train_ratio, val_ratio, test_ratio], generator=generator)
+    if dataset_split == "mini":
+        sample_paths = random.sample(train_paths+val_paths+test_paths, 1000)
+        train_paths = sample_paths[:int(len(sample_paths)*train_ratio)]
+        val_paths = sample_paths[int(len(sample_paths)*train_ratio): int(len(sample_paths)*(train_ratio+val_ratio))+1]
+        test_paths = sample_paths[int(len(sample_paths)*(train_ratio+val_ratio))+1:]
+    elif dataset_split == "random_split":
+        all_paths = random.shuffle(train_paths+val_paths+test_paths)
+        train_paths = all_paths[:int(len(all_paths)*train_ratio)]
+        val_paths = all_paths[int(len(all_paths)*train_ratio): int(len(all_paths)*(train_ratio+val_ratio))+1]
+        test_paths = all_paths[int(len(all_paths)*(train_ratio+val_ratio))+1:]
+    
+
+    if dataset_type == "image":
+        transform = pipeline_transform
+        train_dataset = ImageDataset(data_dir, targets_path, train_paths, transform=transform)
+        val_dataset = ImageDataset(data_dir, targets_path, val_paths, transform=transform)
+        test_dataset = ImageDataset(data_dir, targets_path, test_paths, transform=transform)
+    elif dataset_type == "hmap":
+        transform = default_img_transform
+        train_dataset = HmapDataset(hmap_dir, targets_path, train_paths, transform=transform)
+        val_dataset = HmapDataset(hmap_dir, targets_path, val_paths, transform=transform)
+        test_dataset = HmapDataset(hmap_dir, targets_path, test_paths, transform=transform)
+
+    logger.info(f"Using {dataset_split} {dataset_type} Dataset with {len(train_dataset)} training samples, {len(val_dataset)} validation samples, {len(test_dataset)} test samples")
     input_shape = list(train_dataset[0][0].shape)
     output_size = int(train_dataset[0][1].shape[0])
+    logger.info(f"Input shape: {input_shape}")
+    logger.info(f"Target size: {output_size}")
 
-    # train_dataset = ImageDataset(train_data, train_label)
-    # val_dataset = ImageDataset
-    # test_dataset = ImageDataset(test_data, test_label)
+    # Set up transforms
+    
+    # data normalization transform
+    data_mean, data_std = train_dataset.calculate_data_stats()
+    transform.transforms.append(v2.Normalize(data_mean, data_std)) #normalize_target(means=data_mean, stds=data_std)
+    train_dataset.set_transform(transform)
+    val_dataset.set_transform(transform)
+    test_dataset.set_transform(transform)
+
+    # target normalization transform
+    target_mean, target_std = train_dataset.calculate_target_stats()
+    target_transform = normalize_target(means=target_mean, stds=target_std)
+    train_dataset.set_target_transform(target_transform)
+    val_dataset.set_target_transform(target_transform)
+    test_dataset.set_target_transform(target_transform)
+
+    logger.info(f"Data transform:\n{transform}")
+    logger.info(f"Target transform: {target_transform}")
+
 
     # Set up Dataloaders 
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
@@ -156,7 +169,7 @@ if __name__ == "__main__":
         logger.info(f"Epoch {epoch+1}")
         
         train(model, train_loader, loss_fct, optimizer, log_interval, logger, device)
-        val_losses = test(val_loader, model, eval_losses, dataset.target_transform, device)
+        val_losses = test(val_loader, model, eval_losses, val_dataset.target_transform, device)
 
         logger.info(f'MSE Validation Loss: {val_losses["MSE"]:.4e},   MAE Validation Loss: {val_losses["MAE"]:.4e},   Relative Validation Loss: {val_losses["MRE"]:.4f}')
         print(f'MSE Validation Loss: {val_losses["MSE"]:.4e},   MAE Validation Loss: {val_losses["MAE"]:.4e},   Relative Validation Loss: {val_losses["MRE"]:.4f}')
@@ -173,6 +186,6 @@ if __name__ == "__main__":
     # if save_model:
     #     model.load_state_dict(torch.load(model_path, weights_only=True))  # load the saved best model
     #     model = model.to(device)
-    test_losses = test(test_loader, model, eval_losses, dataset.target_transform, device)
+    test_losses = test(test_loader, model, eval_losses, test_dataset.target_transform, device)
     logger.info(f'MSE Evaluation loss: {test_losses["MSE"]:.4e},   MAE Evaluation loss: {test_losses["MAE"]:.4e},   Relative Evaluation Loss: {test_losses["MRE"]:.4f}')
     print(f'MSE Evaluation loss: {test_losses["MSE"]:.4e},   MAE Evaluation loss: {test_losses["MAE"]:.4e},   Relative Evaluation Loss: {test_losses["MRE"]:.4f}')

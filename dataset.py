@@ -36,10 +36,6 @@ class MaxCenterCrop(torch.nn.Module):
         left = (w - min_dim) // 2
         return img[:, top:top+min_dim, left:left+min_dim]
 
-class resize(torch.nn.Module):
-    def forward(self, img, size=256):
-        return cv2.resize(img, (size, size), interpolation=cv2.INTER_AREA)
-
 
 class normalize_target(torch.nn.Module):
     def __init__(self, means, stds):
@@ -57,14 +53,17 @@ class normalize_target(torch.nn.Module):
 
 pipeline_transform = v2.Compose([
     MaxCenterCrop(),
-    # resize(),
     v2.Resize(size=(size, size)),
     v2.ToDtype(torch.float32, scale=True) # scale to [0.0, 1.0]
 ])
 
+# default_img_transform = v2.Compose([
+#     RotateToLandscape(),
+#     v2.Resize(size=(375, 500)),
+#     v2.ToDtype(torch.float32, scale=True) # scale to [0.0, 1.0]
+# ])
+
 default_img_transform = v2.Compose([
-    RotateToLandscape(),
-    v2.Resize(size=(375, 500)),
     v2.ToDtype(torch.float32, scale=True) # scale to [0.0, 1.0]
 ])
 
@@ -82,13 +81,6 @@ def default_rgb_loader(path: str) -> Any:
     # use a torch vision function to decode
     image = io.decode_image(path, mode=io.ImageReadMode.RGB)
     
-
-    # open path as file to avoid ResourceWarning (https://github.com/python-pillow/Pillow/issues/835)
-    # with open(img_path, "rb") as f:
-    #     image = Image.open(f)
-    # image = Image.open(path)
-    # image = image.convert("RGB")
-
     return image
 
 def default_gray_loader(path: str) -> Any:
@@ -103,7 +95,7 @@ def default_npy_loader(path: str) -> Any:
     return hmap
 
 class ImageDataset(Dataset):
-    def __init__(self, data_dir, targets_path, data_paths: list[str] = None, loader: Callable[[str], Any] = default_rgb_loader, transform_mode: str = "default", target_transform: Any = None):
+    def __init__(self, data_dir, targets_path, data_paths: list[str] = None, loader: Callable[[str], Any] = default_rgb_loader, transform: Any = None, target_transform: Any = None):
 
         self.targets = pd.read_csv(targets_path)
         if data_paths is not None: # if a list of data paths is provided, only use those
@@ -113,31 +105,34 @@ class ImageDataset(Dataset):
 
         self.loader = loader
     
-        if transform_mode == "default":
-            self.transform = default_img_transform
-        elif transform_mode == "pipeline":
-            self.transform = pipeline_transform
-        else:
-            raise ValueError("Unknown transform type.")
+        self.transform = transform
         
         self.target_transform = target_transform
+  
 
-        # if target_transform_mode == "default":
-        #     self.target_transform = None
-        # elif target_transform_mode == "normalize":
-        #     means, stds = self.targets.iloc[:, 1:].mean().to_numpy(), self.targets.iloc[:, 1:].std().to_numpy()
-        #     # self.target_transform = v2.Normalize(mean=means, std=stds)
-        #     self.target_transform = normalize_target_transform(means=means, stds=stds)
-        # else:
-        #     raise ValueError("Unknown target transform type.")
-
-        # for path in relative_paths:
-        #     data =  
-
-    def calculate_stats(self):
+    def calculate_target_stats(self):
         means, stds = self.targets.iloc[:, 1:].mean().to_numpy(), self.targets.iloc[:, 1:].std().to_numpy()
         return means, stds
     
+    def calculate_data_stats(self):
+        l = self.__len__()
+        n_channels, W, H = self.__getitem__(0)[0].shape
+        mean = torch.zeros(n_channels)
+        std = torch.zeros(n_channels)
+        print(f"Calculating mean and std over {l} images...")
+        for i in tqdm(range(l)):
+            img = self.__getitem__(i)[0]
+            mean += torch.sum(img, dim=(1,2))
+            std += torch.sum(img**2, dim=(1,2))
+        
+        n = W*H*l
+        mean /= n
+        std /= n
+        return mean, std
+    
+    def set_transform(self, transform):
+        self.transform = transform
+
     def set_target_transform(self, target_transform):
         self.target_transform = target_transform
 
@@ -162,9 +157,24 @@ class ImageDataset(Dataset):
 
 
 class DictImageDataset(ImageDataset):
-    def __init__(self, data_dir, targets_path, data_paths: list[str] = None, loader: Callable[[str], Any] = default_rgb_loader, transform_mode: str = "default", target_transform: Any = None):
-         super().__init__(data_dir, targets_path, data_paths, loader, transform_mode, target_transform)
+    def __init__(self, data_dir, targets_path, data_paths: list[str] = None, loader: Callable[[str], Any] = default_rgb_loader, transform: Any = None, target_transform: Any = None):
+         super().__init__(data_dir, targets_path, data_paths, loader, transform, target_transform)
 
+    def calculate_data_stats(self):
+        l = self.__len__()
+        n_channels, W, H = self.__getitem__(0)["x"].shape
+        mean = torch.zeros(n_channels)
+        std = torch.zeros(n_channels)
+        print(f"Calculating mean and std over {l} images...")
+        for i in tqdm(range(l)):
+            img = self.__getitem__(i)["x"]
+            mean += torch.sum(img, dim=(1,2))
+            std += torch.sum(img**2, dim=(1,2))
+        
+        n = W*H*l
+        mean /= n
+        std /= n
+        return mean, std
 
     def __getitem__(self, idx) -> dict:
 
@@ -179,34 +189,31 @@ def replace_path_ending(path: str, file_type: str='npy') -> str:
     return os.path.splitext(path)[0] + "." + file_type
 
 class HmapDataset(ImageDataset):
-    def __init__(self, data_dir, targets_path, data_paths: list[str] = None, file_type: str="png", transform_mode: str = "default", target_transform: Any = None):
+    def __init__(self, data_dir, targets_path, data_paths: list[str] = None, file_type: str="png", transform: Any = None, target_transform: Any = None):
         
-        super().__init__(data_dir, targets_path, data_paths=data_paths, loader=default_gray_loader, transform_mode=transform_mode, target_transform=target_transform)
+        super().__init__(data_dir, targets_path, data_paths=data_paths, loader=default_gray_loader, transform=transform, target_transform=target_transform)
 
         if file_type == 'npy':
             self.loader = default_npy_loader 
         self.targets['path'] = self.targets['path'].map(lambda path: replace_path_ending(path, file_type))
 
-class DictHmapDataset(HmapDataset):
-    def __init__(self, data_dir, targets_path, data_paths: list[str] = None, file_type: str="png", transform_mode: str = "default", target_transform: Any = None):
-         super().__init__(data_dir, targets_path, data_paths, file_type, transform_mode, target_transform)
+# class DictHmapDataset(HmapDataset):
+#     def __init__(self, data_dir, targets_path, data_paths: list[str] = None, file_type: str="png", transform: Any = None, target_transform: Any = None):
+#          super().__init__(data_dir, targets_path, data_paths, file_type, transform, target_transform)
 
 
-    def __getitem__(self, idx) -> dict:        
-        image, target = super().__getitem__(idx)
-        return {"x": image, "y": target}
+#     def __getitem__(self, idx) -> dict:        
+#         image, target = super().__getitem__(idx)
+#         return {"x": image, "y": target}
 
+class DictHmapDataset(DictImageDataset):
+    def __init__(self, data_dir, targets_path, data_paths: list[str] = None, file_type: str="png", transform: Any = None, target_transform: Any = None):
+        
+        super().__init__(data_dir, targets_path, data_paths=data_paths, loader=default_gray_loader, transform=transform, target_transform=target_transform)
 
-# class ImageDataset(ImageFolder):
-#     def __init__(self, data_dir: str, targets_path: str, *args: Any, **kwargs: Any) -> None:
-#         super().__init__(data_dir, *args, **kwargs) # problem: reads *all* files, but we only have targets for a few
-#         paths, _ = zip(*self.imgs)
-
-#         targets = pd.read_csv(targets_path)
-
-
-#         self.targets = [targets.loc[targets["path"]==str(path),:].drop(columns="path").to_numpy()[0] for path in paths]
-#         self.samples = self.imgs = list(zip(paths, self.targets))
+        if file_type == 'npy':
+            self.loader = default_npy_loader 
+        self.targets['path'] = self.targets['path'].map(lambda path: replace_path_ending(path, file_type))
 
 
 
@@ -221,7 +228,7 @@ if __name__ == "__main__":
     relative_paths = processed_paths[:3]
 
     # test ImageDataset class
-    # dataset = ImageDataset(data_dir, targets_path, transform_mode="pipeline")
+    # dataset = ImageDataset(data_dir, targets_path, transform=pipeline_transform())
     # print(dataset[0])
 
 
@@ -229,9 +236,10 @@ if __name__ == "__main__":
     data_dir = "hmaps/"
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
-    dataset = HmapDataset(data_dir, targets_path, file_type='npy')
-    print(dataset[465])
-    dataset = HmapDataset("hmaps_png/", targets_path, file_type='png')
-    print(dataset[465])
+    # dataset = HmapDataset(data_dir, targets_path, file_type='npy', transform=default_img_transform())
+    # print(dataset[465])
+    dataset = HmapDataset("hmaps_png/", targets_path, file_type='png', transform=default_img_transform())
+    # print(dataset[465])
+    print(dataset.calculate_data_stats())
 
     t=0

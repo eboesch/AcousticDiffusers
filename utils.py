@@ -6,6 +6,19 @@ import torch.autograd as autograd
 
 ALL_FREQ_BANDS = [100, 125, 160, 200, 250, 315, 400, 500, 630, 800, 1000, 1250, 1600, 2000, 2500, 3150, 4000]
 
+def read_list(file_path):
+    list = []
+    with open(file_path, 'r') as fp:
+        for line in fp:
+            # remove linebreak from a current name
+            # linebreak is the last character of each line
+            x = line[:-1]
+
+            # add current item to the list
+            list.append(x)
+    
+    return list
+
 
 class MRE(nn.Module):
     """
