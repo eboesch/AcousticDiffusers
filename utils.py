@@ -4,6 +4,8 @@ import torch
 import torch.nn as nn
 import torch.autograd as autograd
 
+ALL_FREQ_BANDS = [100, 125, 160, 200, 250, 315, 400, 500, 630, 800, 1000, 1250, 1600, 2000, 2500, 3150, 4000]
+
 
 class MRE(nn.Module):
     """
@@ -113,27 +115,61 @@ def compute_derivatives_2D(u, domain_size=2.0):
 
     return {'u': u, 'ux': ux, 'uxx': uxx, 'uy': uy, 'uyy': uyy}
 
-# def laplacian(u, coords):
-#     grads = autograd.grad(u, coords, grad_outputs=torch.ones_like(u), create_graph=True)[0]
-#     d2x = autograd.grad(grads[:,0], coords, grad_outputs=torch.ones_like(grads[:,0]), create_graph=True)[0][:,0]
-#     d2y = autograd.grad(grads[:,1], coords, grad_outputs=torch.ones_like(grads[:,1]), create_graph=True)[0][:,1]
-#     return d2x + d2y
+def fft_laplacian(u, domain_size=2.0):
+    """
+    Compute ux, uxx, uy, uyy from a 2D field using Fourier differentiation.
+    Matches approach used in the document (input in physical space).
+
+    Args:
+        u (Tensor): Shape (batch, nx, ny)
+        domain_size (float): Physical size of the square domain
+
+    Returns:
+        ux, uxx, uy, uyy (Tensors): Each of shape (batch, nx, ny)
+    """
+    batchsize, n_freq, nx, ny = u.shape
+    device = u.device
+
+
+    # Compute wavenumbers (assume 2π periodic)
+    kx = torch.fft.fftfreq(nx, d=domain_size / nx).to(device) * 2 * np.pi
+    ky = torch.fft.fftfreq(ny, d=domain_size / ny).to(device) * 2 * np.pi
+    kx, ky = torch.meshgrid(kx, ky, indexing='ij')
+    kx = kx.unsqueeze(0)  # shape (1, nx, ny)
+    ky = ky.unsqueeze(0)
+
+    # FFT of input
+    u_hat = torch.fft.fft2(u, dim=(-2,-1))
+
+    # laplacian in fourier space = uxx_hat + uyy_hat, for uxx_hat = -kx ** 2 * u_hat
+    lap_hat = -(kx**2 + ky**2) * u_hat
+
+    # Inverse FFT to return to physical space
+    lap_u = torch.fft.ifft2(lap_hat, s=(nx,ny), dim=(-2,-1)).real
+    return lap_u
+
+
+def autograd_laplacian(u, coords):
+    grads = autograd.grad(u, coords, grad_outputs=torch.ones_like(u), create_graph=True)[0]
+    d2x = autograd.grad(grads[:,0], coords, grad_outputs=torch.ones_like(grads[:,0]), create_graph=True)[0][:,0]
+    d2y = autograd.grad(grads[:,1], coords, grad_outputs=torch.ones_like(grads[:,1]), create_graph=True)[0][:,1]
+    return d2x + d2y
 
 class PDEloss(nn.Module):
     def __init__(self, reduction='sum', deriv_type='spectral'):
         super().__init__()
 
         assert reduction in ['mean', 'sum', 'none'], "reduction must be one of 'mean', 'sum', or 'none'"
-        assert deriv_type in ['spectral', 'autograd', 'spherical'], "deriv_type must be one of 'naive', 'autograd', or 'spherical'"
+        assert deriv_type in ['spectral', 'spectral_complex', 'spherical'], "deriv_type must be one of 'spectral', 'spectral_complex', or 'spherical'"
         self.reduction = reduction
         self.deriv_type = deriv_type
 
-        if deriv_type == 'autograd':
-            x = torch.linspace(-50, 50, 256)
-            y = torch.linspace(-50, 50, 256)
-            xx, yy = torch.meshgrid(x, y, indexing="xy")
-            self.coords = torch.stack([xx.reshape(-1), yy.reshape(-1)], dim=1)  # (nx*ny, 2)
-            self.coords.requires_grad_(True)
+        # if deriv_type == 'autograd':
+        #     x = torch.linspace(-50, 50, 256)
+        #     y = torch.linspace(-50, 50, 256)
+        #     xx, yy = torch.meshgrid(x, y, indexing="xy")
+        #     self.coords = torch.stack([xx.reshape(-1), yy.reshape(-1)], dim=1)  # (nx*ny, 2)
+        #     self.coords.requires_grad_(True)
 
     @property
     def name(self):
@@ -160,19 +196,23 @@ class PDEloss(nn.Module):
     #         return pde
 
 
+    
     def fft_loss(self, u, freq):
         """
         freq: frequency in Hz
         
         """
-        derivs = compute_derivatives_2D(u, domain_size=100)
 
-        uxx = derivs['uxx']
-        uyy = derivs['uyy']
+        n_freqs = len(freq)
+
+        lap = fft_laplacian(u, domain_size=100)
 
         c = 343 # Speed of sound in m/s
-        k = 2*np.pi * freq / c # wavenumber
-        pde = uxx + uyy + k**2 * u
+        freq = torch.Tensor(freq)
+        k = 2*torch.pi * freq / c # wavenumber
+        k = k.to(u.device, u.dtype).view(1, n_freqs, 1, 1)
+
+        pde = lap + k**2 * u
 
         if self.reduction=='sum':
             return torch.sum(pde**2)
@@ -181,11 +221,45 @@ class PDEloss(nn.Module):
         else:
             return pde
         
+    def fft_complex_loss(self, u, freq):
+        """
+        freq: frequency in Hz
+        u: shape (batch, 2*n_freqs, nx, ny )
+        
+        """
+        n_freqs = len(freq)
+        batchsize, _, nx, ny = u.shape
+        u_complex = u.view(batchsize, n_freqs, 2, nx, ny)
+        u_real = u_complex[:,:,0,:,:]
+        u_img = u_complex[:,:,1,:,:]
+        
+
+        lap_real = fft_laplacian(u_real, domain_size=100)
+        lap_img = fft_laplacian(u_img, domain_size=100)
+
+        c = 343 # Speed of sound in m/s
+        freq = torch.Tensor(freq)
+        k = 2*torch.pi * freq / c # wavenumber
+        k = k.to(u.device, u.dtype).view(1, n_freqs, 1, 1)
+
+        pde_real = lap_real + k**2 * u_real
+        pde_img = lap_img + k**2 * u_real
+
+
+        if self.reduction=='sum':
+            return torch.sum(pde_real**2 + pde_img**2)
+        elif self.reduction=='mean':
+            return torch.mean(pde_real**2 + pde_img**2)
+        else:
+            return pde_real + pde_img
+        
     def forward(self, u, freq):
         if self.deriv_type == "spectral":
-            return self.fft_loss(u, freq)
-        elif self.deriv_type == 'autograd':
-            return self.autograd_real_loss(u, freq)
+            return self.fft_loss_batch(u, freq)
+        elif self.deriv_type == 'spectral_complex':
+            return self.fft_complex_loss(u, freq)
+        elif self.deriv_type == 'spherical':
+            raise NotImplementedError
 
 class PDEloss3D(nn.Module):
     def __init__(self, device):
@@ -220,13 +294,20 @@ def compute_diffusion_coeffs(pressures: torch.Tensor) -> torch.Tensor:
         np.ndarray: Array of diffusion coefficients. Shape: (batch, n_frequencies,).
     """
  
-    B, F = pressures.shape[:2] # Batch size, Number of frequencies
+    batchsize, n_freq = pressures.shape[:2] # Batch size, Number of frequencies 
     L = torch.prod(torch.tensor(pressures.shape[2:])) # Number of Listeners (multiply over all spatial dimensions)
 
-    # Flatten all spatial/listener dimensions
-    pressures = pressures.view(B, F, L) # shape: (batch, n_frequencies, L)
-
-    y = torch.abs(pressures)**2 # shape: (batch, n_frequencies, L)
+    # Flatten all spatial/listener dimensions and take absolute value
+    if n_freq == 2*len(ALL_FREQ_BANDS):
+        # complex pressures are encoded in 2 channels per frequency 
+        pressures_complex = pressures.view(batchsize, len(ALL_FREQ_BANDS), 2, -1)
+        # y = torch.abs(pressures)**2 # shape: (batch, n_frequencies, L)
+        re, im = pressures_complex[:, :, 0], pressures_complex[:, :, 1]
+        y = re**2 + im**2 + 1e-12
+    elif n_freq == len(ALL_FREQ_BANDS):
+        pressures = pressures.view(batchsize, n_freq, L)
+        y = torch.abs(pressures)**2 # shape: (batch, n_frequencies, L)
+    
 
     sum_of_squares = torch.sum(y**2, dim=2) # shape: (batch, n_frequencies,)
     coeffs = (torch.sum(y, dim=2)**2 - sum_of_squares)/( (L-1)*sum_of_squares + 1e-20) # shape: (batch, n_frequencies,)
@@ -252,4 +333,5 @@ if __name__ == "__main__":
     print(f"Target: {target}")
 
     print(f"Difference: {torch.tensor(target)-coeffs}")
+
 

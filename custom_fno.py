@@ -526,6 +526,7 @@ class PhysicsTrainer(CustomTrainer):
         
         if self.epoch == 0 and idx == 0 and self.verbose:
             print(f"Raw outputs of shape {out.shape}")
+            self.logger.info(f"Raw outputs of shape {out.shape}")
 
         # postprocess outputs
         if self.data_processor is not None:
@@ -544,9 +545,11 @@ class PhysicsTrainer(CustomTrainer):
         else:
             if self.physics_loss is not None:
                 # compute PDE loss for each frequency band
-                for i in range(sample['y'].shape[1]):
-                    pde_l = self.physics_loss(out[:, i, :, :], ALL_FREQ_BANDS[i])
-                    loss += self.lmbda * pde_l
+                # for i in range(sample['y'].shape[1]):
+                #     pde_l = self.physics_loss(out[:, i, :, :], ALL_FREQ_BANDS[i])
+                #     loss += self.lmbda * pde_l
+                pde_l = self.physics_loss(out, ALL_FREQ_BANDS)
+                loss += self.lmbda * pde_l
 
                 # compute coeffs
                 coeff_pred = compute_diffusion_coeffs(out)
