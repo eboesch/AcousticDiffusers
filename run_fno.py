@@ -15,7 +15,7 @@ import pandas as pd
 import logging
 from datetime import datetime
 from dataset import DictImageDataset, DictHmapDataset, target_pad, normalize_target, default_img_transform, pipeline_transform
-from custom_fno import CustomTrainer, PhysicsTrainer, FNOtoScalar, FNO_MAE, FNO_MSE, FNO_MRE, FNO_CNN
+from custom_fno import CustomTrainer, PhysicsTrainer, FNOtoScalar, FNO_MAE, FNO_MSE, FNO_MRE, FNO_CNN, load_fno_from_checkpoint
 from utils import PDEloss, read_list
 
 import matplotlib.pyplot as plt
@@ -30,15 +30,20 @@ logger = logging.getLogger(__name__)
 if __name__ == "__main__":
 
    timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+   model_dir = f"logs/{timestamp}/"
+   if not os.path.exists(model_dir):
+      os.makedirs(model_dir)
 
    logging.basicConfig(
-      handlers=[logging.FileHandler(f"logs/{timestamp}_logs.log")],
+      handlers=[logging.FileHandler(model_dir+"/logs.log")],
       level=logging.INFO,
       format="%(asctime)s | %(message)s",
       datefmt="%H:%M",
    )
+
+   blurb = "Hmaps, complex spectral physics loss, mean reduction, data+target normalization, l2 training loss, no further changes"
    logger.info(
-      "--------------------------------------------\nStarting Script\nComplex pressures, hmaps\n--------------------------------------------"
+      f"--------------------------------------------\nStarting Script\n{blurb}\n--------------------------------------------"
    )
 
    # Training settings
@@ -50,7 +55,6 @@ if __name__ == "__main__":
    lmbda = 1
    log_interval = 100
    save_model = True
-   model_path = f"logs/{timestamp}_model.pth"
 
    logger.info(f"lr: {lr}")
    logger.info(f"weight_decay: {weight_decay}")
@@ -74,7 +78,7 @@ if __name__ == "__main__":
    logger.info("Creating Dataset...")
    
    dataset_type = "hmap"  # "hmap" or "image"
-   dataset_split = "mini"  # "pre_split", "random_split" or "mini"
+   dataset_split = "pre_split"  # "pre_split", "random_split" or "mini"
 
    train_paths = read_list('train_paths.txt')
    val_paths = read_list('val_paths.txt')
@@ -86,7 +90,8 @@ if __name__ == "__main__":
    test_ratio = 1-train_ratio-val_ratio
 
    if dataset_split == "mini":
-      sample_paths = random.sample(train_paths+val_paths+test_paths, 1000)
+      n_samples = 1000
+      sample_paths = random.sample(train_paths+val_paths+test_paths, n_samples)
       train_paths = sample_paths[:int(len(sample_paths)*train_ratio)]
       val_paths = sample_paths[int(len(sample_paths)*train_ratio): int(len(sample_paths)*(train_ratio+val_ratio))+1]
       test_paths = sample_paths[int(len(sample_paths)*(train_ratio+val_ratio))+1:]
@@ -114,9 +119,15 @@ if __name__ == "__main__":
    logger.info(f"Input shape: {input_shape}")
    logger.info(f"Target size: {output_size}")
 
+
    # Set up transforms
     
    # data normalization transform
+   # if (dataset_split == "pre_split") and (dataset_type=="hmaps"):
+   #    # if using pre-defined dataset split, use pre-computed mean and std to save some time
+   #    data_mean = [0.5404]
+   #    data_std = [0.3486]
+   # else:
    data_mean, data_std = train_dataset.calculate_data_stats()
    transform.transforms.append(v2.Normalize(data_mean, data_std)) #normalize_target(means=data_mean, stds=data_std)
    train_dataset.set_transform(transform)
@@ -126,9 +137,7 @@ if __name__ == "__main__":
    # target normalization transform
    target_mean, target_std = train_dataset.calculate_target_stats()
    target_transform = normalize_target(means=target_mean, stds=target_std)
-   train_dataset.set_target_transform(target_transform)
-   val_dataset.set_target_transform(target_transform)
-   test_dataset.set_target_transform(target_transform)
+
 
    logger.info(f"Data transform:\n{transform}")
    logger.info(f"Target transform: {target_transform}")
@@ -142,17 +151,9 @@ if __name__ == "__main__":
 
    # create FNO model
    logger.info("Creating Model and Trainer...")
-   model = TFNO(n_modes=(16, 16), hidden_channels=32, in_channels=input_shape[0], out_channels=output_size)
-   # model = FNOtoScalar(n_freqs=17, hidden_channels=32)
+   model = FNO(n_modes=(16, 16), hidden_channels=32, in_channels=input_shape[0], out_channels=2*output_size, n_layers=4)
+   # model = FNOtoScalar(in_channels=input_shape[0], output_size=output_size, hidden_channels=32)
    # model = FNO_CNN(input_shape=input_shape, output_size=output_size)
-
-   # you can improve the previous models by simply using a Tucker Tensorized FNO with just a few parameters
-   # model = TFNO(n_modes=(16, 16), hidden_channels=64,
-   #                in_channels=3,
-   #                out_channels=1,
-   #                factorization='tucker',
-   #                implementation='factorized',
-   #                rank=0.05)
    model.to(device)
    
    
@@ -162,7 +163,7 @@ if __name__ == "__main__":
    #                      log_interval=log_interval,
    #                      logger=logger,
    #                      device=device, 
-   #                      data_processor=DefaultDataProcessor().to(device),
+   #                      data_processor=DefaultDataProcessor(out_normalizer=target_transform).to(device),
    #                      eval_interval=1,
    #                      use_distributed=False,
    #                      verbose=True)
@@ -171,13 +172,12 @@ if __name__ == "__main__":
                         log_interval=log_interval,
                         logger=logger,
                         device=device, 
-                        data_processor=DefaultDataProcessor().to(device),
+                        data_processor=DefaultDataProcessor(out_normalizer=target_transform).to(device),
                         eval_interval=1,
                         use_distributed=False,
                         verbose=True)
 
 
-   # optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=lr)
    optimizer = AdamW(model.parameters(),
                            lr=lr,
                            weight_decay=weight_decay)
@@ -190,7 +190,7 @@ if __name__ == "__main__":
    mseloss = FNO_MSE()
    maeloss = FNO_MAE()
    relloss = FNO_MRE()
-   physics_loss = PDEloss(reduction='mean', deriv_type='spectral')
+   physics_loss = PDEloss(reduction='mean', deriv_type='spectral_complex')
 
    train_loss = l2loss
    eval_losses = {"H1": h1loss, "L1": l1loss, "L2": l2loss, "MSE": mseloss, "MAE": maeloss, "MRE": relloss}
@@ -210,25 +210,29 @@ if __name__ == "__main__":
    # train the model
    logger.info("Starting Training...")
    trainer.train(train_loader=train_loader,
-            test_loaders={"val_data": val_loader},
+            test_loaders={"val": val_loader},
             optimizer=optimizer,
             scheduler=scheduler,
             regularizer=False,
             training_loss=train_loss,
             physics_loss=physics_loss,
             lmbda=lmbda,
-            eval_losses=eval_losses)
+            eval_losses=eval_losses,
+            save_best='val_MRE',
+            save_dir=model_dir)
 
+   # save the weights of the trained model:
+   model.save_checkpoint(save_folder=model_dir, save_name='final_model')
 
 
    logger.info("Starting Evaluation...")
+
+   # load best model
+   
+   model = load_fno_from_checkpoint(model_cls=model.__class__, save_folder=model_dir, save_name='best_model')
+
    trainer.evaluate_all(epoch=epochs,
                          eval_losses=eval_losses,
                          test_loaders={"test_data": test_loader})
      
-   # save the weights of the trained model:
-   model.save_checkpoint(save_folder='logs/', save_name='example_fno')
-
-   # load saved weights
-   # model = FNO.from_checkpoint(save_folder='./checkpoints/', save_name='example_fno')
    

@@ -43,13 +43,16 @@ class normalize_target(torch.nn.Module):
         self.means = torch.tensor(means, dtype=torch.float32)
         self.stds = torch.tensor(stds, dtype=torch.float32)
 
-    def forward(self, targets):   
+    def transform(self, targets):   
         device = targets.device     
         return (targets - self.means.to(device)) / self.stds.to(device)
     
-    def inverse(self, targets):
+    def inverse_transform(self, targets):
         device = targets.device 
         return targets * self.stds.to(device) + self.means.to(device)
+    
+    def forward(self, targets):
+        return self.transform(targets)
 
 pipeline_transform = v2.Compose([
     MaxCenterCrop(),

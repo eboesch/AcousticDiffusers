@@ -268,7 +268,7 @@ class PDEloss(nn.Module):
         
     def forward(self, u, freq):
         if self.deriv_type == "spectral":
-            return self.fft_loss_batch(u, freq)
+            return self.fft_loss(u, freq)
         elif self.deriv_type == 'spectral_complex':
             return self.fft_complex_loss(u, freq)
         elif self.deriv_type == 'spherical':

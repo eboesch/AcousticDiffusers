@@ -4,6 +4,7 @@ from typing import Union
 import sys
 import warnings
 from tqdm import tqdm
+import os
 
 import torch
 from torch.cuda import amp
@@ -23,22 +24,23 @@ import neuralop.mpu.comm as comm
 from neuralop.losses import LpLoss
 from neuralop.training.training_state import load_training_state, save_training_state
 
-from neuralop.models import FNO
+from neuralop.models import FNO, TFNO
+from neuralop.models.base_model import BaseModel
 from models.models import CNN
 from utils import MRE, PDEloss, compute_derivatives_2D, compute_diffusion_coeffs
 
-class FNOtoScalar(nn.Module):
-    def __init__(self, n_freqs, hidden_channels=32):
+class FNOtoScalar(BaseModel):
+    def __init__(self, in_channels, output_size, hidden_channels=32, **kwargs):
         super().__init__()
         self.fno = FNO(
             n_modes=(16, 16),
-            in_channels=3,           # image input
+            in_channels=in_channels,           # image input
             out_channels=hidden_channels,
             hidden_channels=hidden_channels,
             n_layers=4
         )
-        self.pool = nn.AdaptiveAvgPool2d(1)  # integrate over domain
-        self.fc = nn.Linear(hidden_channels, n_freqs)
+        self.pool = nn.AdaptiveMaxPool2d(1)  # integrate over domain
+        self.fc = nn.Linear(hidden_channels, output_size)
 
     def forward(self, x, **kwargs):
         # x: (batch, 1, H, W)
@@ -249,8 +251,8 @@ class CustomTrainer(Trainer):
                   f'         on resolutions {[name for name in test_loaders]}.')
             sys.stdout.flush()
         self.logger.info(f'Training on {len(train_loader.dataset)} samples')
-        self.logger.info(f'Testing on {[len(loader.dataset) for loader in test_loaders.values()]} samples'
-              f'         on resolutions {[name for name in test_loaders]}.')
+        self.logger.info(f'Validating on {[len(loader.dataset) for loader in test_loaders.values()]} samples'
+              f'         on dataset {[name for name in test_loaders]}.')
             
         
         for epoch in range(self.start_epoch, self.n_epochs):
@@ -528,13 +530,9 @@ class PhysicsTrainer(CustomTrainer):
             print(f"Raw outputs of shape {out.shape}")
             self.logger.info(f"Raw outputs of shape {out.shape}")
 
-        # postprocess outputs
-        if self.data_processor is not None:
-            out, sample = self.data_processor.postprocess(out, sample)
-
         loss = 0.0
         
-        # sample['x'].shape: batch, 3, H, W
+        # sample['x'].shape: batch, n_channels, H, W
         # sample['y'].shape: batch, n_freqs
         # out.shape: batch, n_freqs, H, W
 
@@ -551,11 +549,15 @@ class PhysicsTrainer(CustomTrainer):
                 pde_l = self.physics_loss(out, ALL_FREQ_BANDS)
                 loss += self.lmbda * pde_l
 
-                # compute coeffs
-                coeff_pred = compute_diffusion_coeffs(out)
-                loss += training_loss(coeff_pred, **sample)
-            else: 
-                loss += training_loss(out, **sample)
+            # compute coeffs
+            coeff_pred = compute_diffusion_coeffs(out)
+
+            # postprocess outputs
+            if self.data_processor is not None:
+                coeff_pred, sample = self.data_processor.postprocess(coeff_pred, sample)
+
+            loss += training_loss(coeff_pred, **sample)
+
 
         if self.regularizer:
             loss += self.regularizer.loss
@@ -600,9 +602,10 @@ class PhysicsTrainer(CustomTrainer):
 
         out = self.model(**sample)
 
+        out = compute_diffusion_coeffs(out)
         if self.data_processor is not None:
             out, sample = self.data_processor.postprocess(out, sample)
-        out = compute_diffusion_coeffs(out)
+        
 
         eval_step_losses = {}
 
@@ -663,3 +666,30 @@ class FNO_MRE(FNO_MSE):
     @property
     def name(self):
         return f"MRE_{self.d}D_{self.reduction}_reduction_loss"
+    
+
+
+def load_fno_from_checkpoint(model_cls, save_folder, save_name='best_model'):
+
+    metadata_filepath = os.path.join(save_folder, save_name + "_metadata.pkl")
+
+    # Force old behavior torch.load behavior
+    init_kwargs = torch.load(metadata_filepath, weights_only=False)
+
+    version = init_kwargs.pop('_version')
+    if hasattr(model_cls, '_version') and version != model_cls._version:
+        print(version)
+        warnings.warn(f'Checkpoint saved for version {version} of model {model_cls._name} but current code is version {model_cls._version}')
+    
+    if 'args' in init_kwargs:
+        init_args = init_kwargs.pop('args')
+    else:
+        init_args = []
+    instance = model_cls(*init_args, **init_kwargs)
+
+    # Load state dict
+    state_dict_path = os.path.join(save_folder, save_name + "_state_dict.pt")
+    state = torch.load(state_dict_path, map_location="cpu", weights_only=False)
+    instance.load_state_dict(state)
+
+    return instance
