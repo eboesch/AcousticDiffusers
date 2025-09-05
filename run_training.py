@@ -20,26 +20,29 @@ logger = logging.getLogger(__name__)
 if __name__ == "__main__":
     
     timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+    model_dir = f"logs/{timestamp}/"
+    if not os.path.exists(model_dir):
+        os.makedirs(model_dir)
 
     logging.basicConfig(
-        handlers=[logging.FileHandler(f"logs/{timestamp}_logs.log")],
+        handlers=[logging.FileHandler(model_dir+"/logs.log")],
         level=logging.INFO,
         format="%(asctime)s | %(message)s",
         datefmt="%H:%M",
     )
+
+    blurb = "CNN, images, batch_size = 32, lr = 1e-3 "
     logger.info(
-        "--------------------------------------------\nStarting Script\n--------------------------------------------"
+        f"--------------------------------------------\nStarting Script\n{blurb}\n--------------------------------------------"
     )
 
     # Training settings
     seed = 0
     epochs = 10
-    batch_size = 16#64
-    lr = 1e-5
+    batch_size = 32
+    lr = 1e-3
     log_interval = 100
     save_model = True
-    model_path = f"logs/{timestamp}_model.pth"
-
 
     logger.info(f"lr: {lr}")
     logger.info(f"batch_size: {batch_size}")
@@ -52,12 +55,9 @@ if __name__ == "__main__":
     hmap_dir = "hmaps_png/"
     targets_path = "mini_imagenet/coeffs.csv"
 
-    # df = pd.read_csv(targets_path)
-    # processed_paths = list(set(df['path'].tolist()))
-    
-
     device = torch.accelerator.current_accelerator().type if torch.cuda.is_available() else "cpu"
     logger.info("Using %s device", device)
+
 
     # create dataset
     logger.info("Creating Dataset...")
@@ -141,6 +141,7 @@ if __name__ == "__main__":
     mae_eval_loss_fct = nn.L1Loss()
     rel_eval_loss_fct = MRE()
     eval_losses = {"MSE": mse_eval_loss_fct, "MAE": mae_eval_loss_fct, "MRE": rel_eval_loss_fct}
+    val_criterion = "MRE"
 
     logger.info("Model: %s", model)
     logger.info("Using MAE training loss")
@@ -164,6 +165,7 @@ if __name__ == "__main__":
 
     # Training
     logger.info("Starting Training...")
+    best_val_loss = float("inf")
     for epoch in range(epochs):
         print(f"Epoch {epoch+1}")
         logger.info(f"Epoch {epoch+1}")
@@ -177,15 +179,19 @@ if __name__ == "__main__":
         # logger.info(f"Last learning rate: {scheduler.get_last_lr()}")
         # scheduler.step(val_losses[2])
 
+        if val_losses[val_criterion] < best_val_loss:
+            best_val_loss = val_losses[val_criterion]
+            torch.save(model.state_dict(), model_dir + "best_model.pth")
+
     if save_model:
-        torch.save(model.state_dict(), model_path)
+        torch.save(model.state_dict(), model_dir + "final_model.pth")
 
 
     logger.info("Starting Evaluation...")
     # Evaluation
-    # if save_model:
-    #     model.load_state_dict(torch.load(model_path, weights_only=True))  # load the saved best model
-    #     model = model.to(device)
+    if save_model:
+        model.load_state_dict(torch.load(model_dir + "best_model.pth", weights_only=True))  # load the saved best model
+        model = model.to(device)
     test_losses = test(test_loader, model, eval_losses, test_dataset.target_transform, device)
     logger.info(f'MSE Evaluation loss: {test_losses["MSE"]:.4e},   MAE Evaluation loss: {test_losses["MAE"]:.4e},   Relative Evaluation Loss: {test_losses["MRE"]:.4f}')
     print(f'MSE Evaluation loss: {test_losses["MSE"]:.4e},   MAE Evaluation loss: {test_losses["MAE"]:.4e},   Relative Evaluation Loss: {test_losses["MRE"]:.4f}')
