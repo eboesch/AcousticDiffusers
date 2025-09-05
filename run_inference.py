@@ -3,31 +3,25 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.optim.lr_scheduler import StepLR, ReduceLROnPlateau
 from torch.utils.data import DataLoader, random_split
-from dataset import ImageDataset, normalize_target
-from models.models import CNN, train, test, MRE
+from torchvision.transforms import v2
+from dataset import ImageDataset,  HmapDataset, normalize_target, pipeline_transform, default_img_transform
+from models.models import CNN, train, test
+from utils import MRE, read_list
 import pandas as pd
+import random
 import logging
 from datetime import datetime
 import numpy as np
 from tqdm import tqdm
 
 
-# logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 if __name__ == "__main__":
     
-    timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+    timestamp = datetime.now().strftime("%d-%H-%M-%S")
 
-    # logging.basicConfig(
-    #     handlers=[logging.FileHandler(f"logs/{timestamp}_logs.log")],
-    #     level=logging.INFO,
-    #     format="%(asctime)s | %(message)s",
-    #     datefmt="%H:%M",
-    # )
-    # logger.info(
-    #     "--------------------------------------------\nStarting Script\n--------------------------------------------"
-    # )
 
     # Training settings
     seed = 0
@@ -36,54 +30,100 @@ if __name__ == "__main__":
     lr = 1e-3
     log_interval = 100
     save_inferences = True
-    # model_path = f"logs/2025-07-23-14-47-03_model.pth"
-    # model_path = f"logs/2025-07-29-18-03-15_model.pth" # fixed, MSE loss
-    # model_path = f"logs/2025-07-29-18-34-43_model.pth" # fixed, MAE loss
-    # model_path = f"logs/2025-07-29-18-57-46_model.pth" # fixed, MRE loss
-    model_path = f"logs/2025-07-31-10-30-14_model.pth" # fixed, MAE loss, normalization
-    # model_path = f"logs/2025-07-24-10-53-19_model.pth"
-    # inferences_path = f"logs/{timestamp}_inferences.pkl"
-    inferences_path = f"logs/{timestamp}_inferences.csv"
+    loggin_dir = "logs/"
 
+    # model_code = "2025-09-04-11-06-45" # CNN, hmap
+    model_code = "2025-09-04-11-16-40" # CNN, image
+    model_type = "best_model"
+    data_split = "test" # test, val or train
 
+    model_dir = loggin_dir + model_code + "/"
+    model_path = loggin_dir + model_code + "/" + model_type + ".pth"
+    inferences_path = f"logs/{model_code}/{timestamp}_{model_type}_{data_split}_inferences.csv"
 
-    # logger.info(f"lr: {lr}")
-    # logger.info(f"batch_size: {batch_size}")
-    # logger.info(f"epochs: {epochs}")
-    
+    logging.basicConfig(
+        handlers=[logging.FileHandler(f"{model_dir}{timestamp}_{model_type}_{data_split}_losses.log")],
+        level=logging.INFO,
+        format="%(asctime)s | %(message)s",
+        datefmt="%H:%M",
+    )
+
     torch.manual_seed(seed)
+    random.seed(seed)
 
     data_dir = "mini_imagenet/"
+    hmap_dir = "hmaps_png/"
     targets_path = "mini_imagenet/coeffs.csv"
 
-    df = pd.read_csv(targets_path)
-    processed_paths = list(set(df['path'].tolist()))
-    
+   
 
     device = torch.accelerator.current_accelerator().type if torch.cuda.is_available() else "cpu"
     # logger.info("Using %s device", device)
 
     # create dataset
-    # logger.info("Creating Dataset...")
-    transform_mode="pipeline"
-    # logger.info("Using %s transform", transform_mode)
-    dataset = ImageDataset(data_dir, targets_path, transform_mode=transform_mode)
-    mean, std = dataset.calculate_stats()
-    target_transform = normalize_target(means=mean, stds=std)
-    dataset.set_target_transform(target_transform)
+    dataset_type = "image"  # "hmap" or "image"
+    dataset_split = "pre_split"  # "pre_split", "random_split" or "mini"
 
-    # split data into train & test set
+    train_paths = read_list('train_paths.txt')
+    val_paths = read_list('val_paths.txt')
+    test_paths = read_list('test_paths.txt')
+
 
     train_ratio = 0.7
     val_ratio = 0.1
     test_ratio = 1-train_ratio-val_ratio
 
-    generator = torch.Generator().manual_seed(seed)
-    train_dataset, val_dataset, test_dataset = random_split(dataset, [train_ratio, val_ratio, test_ratio], generator=generator)
+    if dataset_split == "mini":
+        sample_paths = random.sample(train_paths+val_paths+test_paths, 1000)
+        train_paths = sample_paths[:int(len(sample_paths)*train_ratio)]
+        val_paths = sample_paths[int(len(sample_paths)*train_ratio): int(len(sample_paths)*(train_ratio+val_ratio))+1]
+        test_paths = sample_paths[int(len(sample_paths)*(train_ratio+val_ratio))+1:]
+    elif dataset_split == "random_split":
+        all_paths = random.shuffle(train_paths+val_paths+test_paths)
+        train_paths = all_paths[:int(len(all_paths)*train_ratio)]
+        val_paths = all_paths[int(len(all_paths)*train_ratio): int(len(all_paths)*(train_ratio+val_ratio))+1]
+        test_paths = all_paths[int(len(all_paths)*(train_ratio+val_ratio))+1:]
+    
+
+    if dataset_type == "image":
+        transform = pipeline_transform
+        train_dataset = ImageDataset(data_dir, targets_path, train_paths, transform=transform)
+        val_dataset = ImageDataset(data_dir, targets_path, val_paths, transform=transform)
+        test_dataset = ImageDataset(data_dir, targets_path, test_paths, transform=transform)
+    elif dataset_type == "hmap":
+        transform = default_img_transform
+        train_dataset = HmapDataset(hmap_dir, targets_path, train_paths, transform=transform)
+        val_dataset = HmapDataset(hmap_dir, targets_path, val_paths, transform=transform)
+        test_dataset = HmapDataset(hmap_dir, targets_path, test_paths, transform=transform)
+
+    # logger.info(f"Using {dataset_split} {dataset_type} Dataset with {len(train_dataset)} training samples, {len(val_dataset)} validation samples, {len(test_dataset)} test samples")
     input_shape = list(train_dataset[0][0].shape)
     output_size = int(train_dataset[0][1].shape[0])
+    # logger.info(f"Input shape: {input_shape}")
+    # logger.info(f"Target size: {output_size}")
 
-    # test_dataset = train_dataset
+    # Set up transforms
+    
+    # data normalization transform
+    data_mean, data_std = train_dataset.calculate_data_stats()
+    transform.transforms.append(v2.Normalize(data_mean, data_std)) #normalize_target(means=data_mean, stds=data_std)
+    train_dataset.set_transform(transform)
+    val_dataset.set_transform(transform)
+    test_dataset.set_transform(transform)
+
+    # target normalization transform
+    target_mean, target_std = train_dataset.calculate_target_stats()
+    target_transform = normalize_target(means=target_mean, stds=target_std)
+    train_dataset.set_target_transform(target_transform)
+    val_dataset.set_target_transform(target_transform)
+    test_dataset.set_target_transform(target_transform)
+
+    # logger.info(f"Data transform:\n{transform}")
+    # logger.info(f"Target transform: {target_transform}")
+
+
+    if data_split == "val":
+        test_dataset = val_dataset
 
     # Set up Dataloaders 
     # train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
@@ -102,20 +142,19 @@ if __name__ == "__main__":
     mse_eval_loss_fct = nn.MSELoss()
     mae_eval_loss_fct = nn.L1Loss()
     rel_eval_loss_fct = MRE()
-    loss_fcts = [mse_eval_loss_fct, mae_eval_loss_fct, rel_eval_loss_fct]
+    eval_losses = {"MSE": mse_eval_loss_fct, "MAE": mae_eval_loss_fct, "MRE": rel_eval_loss_fct}
+    # loss_fcts = [mse_eval_loss_fct, mae_eval_loss_fct, rel_eval_loss_fct]
 
     # logger.info("Starting Evaluation...")
    
     model.eval()
-    losses = np.zeros(len(loss_fcts))
 
-    
-    # features = np.zeros((len(test_dataset), input_shape[1], input_shape[2], input_shape[3]))
-    preds = np.zeros((len(test_dataset), output_size))
-    targets = np.zeros((len(test_dataset), output_size))
+  
+    preds = []
+    targets = []
+
 
     print("total", len(test_dataset))
-    index_start = 0
     last_out = torch.zeros((batch_size, output_size)).to(device)
     n_outputs = 0
     with torch.no_grad():
@@ -126,14 +165,11 @@ if __name__ == "__main__":
             output = model(data)
             
             if target_transform:
-                output = target_transform.inverse(output)
-                target = target_transform.inverse(target)
+                output = target_transform.inverse_transform(output)
+                target = target_transform.inverse_transform(target)
             
-            index_end = index_start + data.shape[0]
-            # features[index_start:index_end, :, :, :] = data.numpy()
-            targets[index_start:index_end, :] = target.squeeze(1).cpu().numpy()
-            preds[index_start:index_end, :] = output.squeeze(1).cpu().numpy()
-
+            targets.append(target)
+            preds.append(output)
 
             out_batch_size = output.shape[0]
             if (output - last_out[:out_batch_size, :]).any():
@@ -142,12 +178,15 @@ if __name__ == "__main__":
                 # print(f"output: {output}")
             last_out = output
 
-            for idx, loss in enumerate(loss_fcts):
-                losses[idx] += loss(output, target).item()
-
-            index_start = index_end
             
-    losses /= len(test_loader)
+
+    preds = torch.cat(preds, dim=0)
+    targets = torch.cat(targets, dim=0)
+
+    losses = {}       
+    for key in eval_losses:
+        loss = eval_losses[key]
+        losses.update({key: loss(preds, targets).item() })
 
     # logger.info(f"number of distinct outputs: {n_outputs}")
     print(f"number of distinct outputs: {n_outputs}")
@@ -156,26 +195,18 @@ if __name__ == "__main__":
     if save_inferences:
         df = pd.DataFrame()
 
+        preds = preds.cpu().numpy()
+        targets = targets.cpu().numpy()
         frequncies = [100,125,160,200,250,315,400,500,630,800,1000,1250,1600,2000,2500,3150,4000]
         for i, freq in enumerate(frequncies):
             df[f'targets_{freq}'] = targets[:, i]
             df[f'preds_{freq}'] = preds[:, i]
             df[f'mae_{freq}'] = np.abs(targets[:, i] - preds[:, i])
             df[f'mse_{freq}'] = (targets[:, i] - preds[:, i])**2
-            df[f'mre_{freq}'] = np.abs((targets[:, i] - preds[:, i])) / (np.abs(targets[:, i]) + 1e-8) * 100
+            df[f'mre_{freq}'] = np.abs((targets[:, i] - preds[:, i])) / (np.abs(targets[:, i]) + 1e-12) * 100
 
         df.to_csv(inferences_path, index=False)
 
-
-        # df['targets'] = list(targets)
-        # df['preds'] = list(preds)
-        # df['mae'] = list(np.abs(targets - preds))
-        # df['mse'] = list((targets - preds)**2)
-        # df['mre'] = list(np.abs((targets - preds)) / (np.abs(targets) + 1e-8) * 100)
-
-        # df.to_pickle(inferences_path)
-        
-
-
-    # logger.info(f'MSE Evaluation loss: {losses[0]:.4e},   MAE Evaluation loss: {losses[1]:.4e},   Relative Validation Loss: {losses[2]:.4f}')
-    print(f'MSE Evaluation loss: {losses[0]:.4e},   MAE Evaluation loss: {losses[1]:.4e},   Relative Validation Loss: {losses[2]:.4f}')
+    
+    print(f'MSE Evaluation loss: {losses["MSE"]:.4e},   MAE Evaluation loss: {losses["MAE"]:.4e},   Relative Validation Loss: {losses["MRE"]:.4f}')
+    logger.info(f'MSE Evaluation loss: {losses["MSE"]:.4e},   MAE Evaluation loss: {losses["MAE"]:.4e},   Relative Validation Loss: {losses["MRE"]:.4f}')
