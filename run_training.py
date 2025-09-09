@@ -1,17 +1,19 @@
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from torch.optim.lr_scheduler import StepLR, ReduceLROnPlateau
-from torch.utils.data import DataLoader, random_split
-from torchvision.transforms import v2
-from dataset import ImageDataset, HmapDataset, normalize_target, pipeline_transform, default_img_transform
-from models.models import CNN, train, test, test_batchwise
-from utils import MRE, read_list
-import pandas as pd
+"""Script for training a CNN model"""
 import random
 import logging
 from datetime import datetime
 import os
+
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.optim.lr_scheduler import StepLR, ReduceLROnPlateau
+from torch.utils.data import DataLoader
+from torchvision.transforms import v2
+
+from dataset import ImageDataset, HmapDataset, normalize_target, pipeline_transform, default_img_transform
+from models.models import CNN, train_epoch, test, test_batchwise
+from utils import MRE, read_list
 
 
 logger = logging.getLogger(__name__)
@@ -38,7 +40,7 @@ if __name__ == "__main__":
 
     # Training settings
     seed = 0
-    epochs = 10
+    epochs = 1
     batch_size = 32
     lr = 1e-3
     log_interval = 100
@@ -59,11 +61,11 @@ if __name__ == "__main__":
     logger.info("Using %s device", device)
 
 
-    # create dataset
+    # ---------------------------------------- Dataset ----------------------------------------
     logger.info("Creating Dataset...")
 
     dataset_type = "hmap"  # "hmap" or "image"
-    dataset_split = "pre_split"  # "pre_split", "random_split" or "mini"
+    dataset_split = "pre_split"  # "pre_split", "random_split" or "subset"
 
     train_paths = read_list('train_paths.txt')
     val_paths = read_list('val_paths.txt')
@@ -74,18 +76,22 @@ if __name__ == "__main__":
     val_ratio = 0.1
     test_ratio = 1-train_ratio-val_ratio
 
-    if dataset_split == "mini":
-        sample_paths = random.sample(train_paths+val_paths+test_paths, 1000)
+    # if not using the pre-defined data splits, overwrite the path lists
+    if dataset_split == "subset":
+        # take only a subsample of the data
+        n_samples = 1000
+        sample_paths = random.sample(train_paths+val_paths+test_paths, n_samples)
         train_paths = sample_paths[:int(len(sample_paths)*train_ratio)]
         val_paths = sample_paths[int(len(sample_paths)*train_ratio): int(len(sample_paths)*(train_ratio+val_ratio))+1]
         test_paths = sample_paths[int(len(sample_paths)*(train_ratio+val_ratio))+1:]
     elif dataset_split == "random_split":
+        # split paths randomly into train/val/test
         all_paths = random.shuffle(train_paths+val_paths+test_paths)
         train_paths = all_paths[:int(len(all_paths)*train_ratio)]
         val_paths = all_paths[int(len(all_paths)*train_ratio): int(len(all_paths)*(train_ratio+val_ratio))+1]
         test_paths = all_paths[int(len(all_paths)*(train_ratio+val_ratio))+1:]
     
-
+    # create datasets
     if dataset_type == "image":
         transform = pipeline_transform
         train_dataset = ImageDataset(data_dir, targets_path, train_paths, transform=transform)
@@ -103,17 +109,17 @@ if __name__ == "__main__":
     logger.info(f"Input shape: {input_shape}")
     logger.info(f"Target size: {output_size}")
 
-    # Set up transforms
     
+    # ------------------ Data Transforms ------------------   
     # data normalization transform
-    data_mean, data_std = train_dataset.calculate_data_stats()
-    transform.transforms.append(v2.Normalize(data_mean, data_std)) #normalize_target(means=data_mean, stds=data_std)
+    data_mean, data_std = train_dataset.calculate_data_stats() # compute mean and std of training set per channel
+    transform.transforms.append(v2.Normalize(data_mean, data_std)) 
     train_dataset.set_transform(transform)
     val_dataset.set_transform(transform)
     test_dataset.set_transform(transform)
 
     # target normalization transform
-    target_mean, target_std = train_dataset.calculate_target_stats()
+    target_mean, target_std = train_dataset.calculate_target_stats() # compute mean and std of targets per channel
     target_transform = normalize_target(means=target_mean, stds=target_std)
     train_dataset.set_target_transform(target_transform)
     val_dataset.set_target_transform(target_transform)
@@ -123,28 +129,30 @@ if __name__ == "__main__":
     logger.info(f"Target transform: {target_transform}")
 
 
-    # Set up Dataloaders 
+    # ------------------ DataLoaders ------------------ 
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=True)
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
 
-    # Set up model
+    # ---------------------------------------- Model ----------------------------------------
     logger.info("Creating Model...")
     model = CNN(input_shape=input_shape, output_size=output_size).to(device)
     # model = CNN(input_shape=input_shape, output_size=output_size, cnn_out_channels_1=32, cnn_out_channels_2=64).to(device)
-    # model.double()
+
     optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=lr)
-    # loss_fct = nn.MSELoss()
-    loss_fct = nn.L1Loss()
-    mse_eval_loss_fct = nn.MSELoss()
-    mae_eval_loss_fct = nn.L1Loss()
-    rel_eval_loss_fct = MRE()
-    eval_losses = {"MSE": mse_eval_loss_fct, "MAE": mae_eval_loss_fct, "MRE": rel_eval_loss_fct}
+    
+    # ------------------ Losses ------------------ 
+    mse_loss = nn.MSELoss()
+    mae_loss = nn.L1Loss()
+    rel_loss = MRE()
+    eval_losses = {"MSE": mse_loss, "MAE": mae_loss, "MRE": rel_loss}
     val_criterion = "MRE"
 
+    training_loss = mae_loss
+
     logger.info("Model: %s", model)
-    logger.info("Using MAE training loss")
+    logger.info(f"Using {training_loss} training loss")
 
 
     # logger.info("Using StepLR scheduler")
@@ -163,14 +171,16 @@ if __name__ == "__main__":
     # logger.info(f"threshold: {threshold}")
     # scheduler = ReduceLROnPlateau(optimizer, 'min', factor=gamma, patience=patience)
 
-    # Training
+    # ---------------------------------------- Training ----------------------------------------
     logger.info("Starting Training...")
     best_val_loss = float("inf")
     for epoch in range(epochs):
         print(f"Epoch {epoch+1}")
         logger.info(f"Epoch {epoch+1}")
         
-        train(model, train_loader, loss_fct, optimizer, log_interval, logger, device)
+        # train a single epoch
+        train_epoch(model, train_loader, training_loss, optimizer, log_interval, logger, device)
+        # compute validation loss for all eval_losses
         val_losses = test(val_loader, model, eval_losses, val_dataset.target_transform, device)
 
         logger.info(f'MSE Validation Loss: {val_losses["MSE"]:.4e},   MAE Validation Loss: {val_losses["MAE"]:.4e},   Relative Validation Loss: {val_losses["MRE"]:.4f}')
@@ -179,19 +189,25 @@ if __name__ == "__main__":
         # logger.info(f"Last learning rate: {scheduler.get_last_lr()}")
         # scheduler.step(val_losses[2])
 
+        # save model with best validation loss
         if val_losses[val_criterion] < best_val_loss:
             best_val_loss = val_losses[val_criterion]
-            torch.save(model.state_dict(), model_dir + "best_model.pth")
+            if save_model:
+                torch.save(model.state_dict(), model_dir + "best_model.pth")
 
     if save_model:
         torch.save(model.state_dict(), model_dir + "final_model.pth")
 
-
+    # ---------------------------------------- Evaluation ----------------------------------------
     logger.info("Starting Evaluation...")
     # Evaluation
-    if save_model:
+    if save_model: # load best model to evaluate
         model.load_state_dict(torch.load(model_dir + "best_model.pth", weights_only=True))  # load the saved best model
         model = model.to(device)
+    
+    # compute losses on test dataset
     test_losses = test(test_loader, model, eval_losses, test_dataset.target_transform, device)
+    
+    # report losses
     logger.info(f'MSE Evaluation loss: {test_losses["MSE"]:.4e},   MAE Evaluation loss: {test_losses["MAE"]:.4e},   Relative Evaluation Loss: {test_losses["MRE"]:.4f}')
     print(f'MSE Evaluation loss: {test_losses["MSE"]:.4e},   MAE Evaluation loss: {test_losses["MAE"]:.4e},   Relative Evaluation Loss: {test_losses["MRE"]:.4f}')

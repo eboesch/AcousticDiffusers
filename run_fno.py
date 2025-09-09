@@ -1,28 +1,24 @@
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from torch.optim.lr_scheduler import StepLR, ReduceLROnPlateau
-from torch.utils.data import DataLoader, random_split
-from torchvision.transforms import v2
-import neuralop
-from neuralop.models import FNO, TFNO
-from neuralop.data.datasets import load_darcy_flow_small
-from neuralop.training import Trainer, AdamW
-from neuralop.losses.data_losses import LpLoss, H1Loss, PointwiseQuantileLoss #, HdivLoss, MSELoss
-from neuralop.data.transforms.data_processors import DefaultDataProcessor
-from neuralop.utils import count_model_params
-import pandas as pd
+"""Script for training an FNO-based model"""
+import os
+import sys
+import random
 import logging
 from datetime import datetime
-from dataset import DictImageDataset, DictHmapDataset, target_pad, normalize_target, default_img_transform, pipeline_transform
+
+import torch
+from torch.utils.data import DataLoader
+from torchvision.transforms import v2
+
+from neuralop.models import FNO, TFNO
+from neuralop.training import AdamW
+from neuralop.losses.data_losses import LpLoss, H1Loss
+from neuralop.data.transforms.data_processors import DefaultDataProcessor
+from neuralop.utils import count_model_params
+
+from dataset import DictImageDataset, DictHmapDataset, normalize_target, default_img_transform, pipeline_transform
 from custom_fno import CustomTrainer, PhysicsTrainer, FNOtoScalar, FNO_MAE, FNO_MSE, FNO_MRE, FNO_CNN, load_fno_from_checkpoint
 from utils import PDEloss, read_list
 
-import matplotlib.pyplot as plt
-import sys
-import os
-import random
-import wandb
 
 
 logger = logging.getLogger(__name__)
@@ -74,7 +70,7 @@ if __name__ == "__main__":
    targets_path = "mini_imagenet/coeffs.csv"
 
 
-   # Create dataset
+   # ---------------------------------------- Dataset ----------------------------------------
    logger.info("Creating Dataset...")
    
    dataset_type = "hmap"  # "hmap" or "image"
@@ -89,19 +85,22 @@ if __name__ == "__main__":
    val_ratio = 0.1
    test_ratio = 1-train_ratio-val_ratio
 
+   # if not using the pre-defined data splits, overwrite the path lists
    if dataset_split == "mini":
+      # take only a subsample of the data
       n_samples = 1000
       sample_paths = random.sample(train_paths+val_paths+test_paths, n_samples)
       train_paths = sample_paths[:int(len(sample_paths)*train_ratio)]
       val_paths = sample_paths[int(len(sample_paths)*train_ratio): int(len(sample_paths)*(train_ratio+val_ratio))+1]
       test_paths = sample_paths[int(len(sample_paths)*(train_ratio+val_ratio))+1:]
    elif dataset_split == "random_split":
+      # split paths randomly into train/val/test
       all_paths = random.shuffle(train_paths+val_paths+test_paths)
       train_paths = all_paths[:int(len(all_paths)*train_ratio)]
       val_paths = all_paths[int(len(all_paths)*train_ratio): int(len(all_paths)*(train_ratio+val_ratio))+1]
       test_paths = all_paths[int(len(all_paths)*(train_ratio+val_ratio))+1:]
 
-
+   # create datasets
    if dataset_type == "image":
       transform = pipeline_transform
       train_dataset = DictImageDataset(data_dir, targets_path, train_paths, transform=transform)
@@ -120,22 +119,21 @@ if __name__ == "__main__":
    logger.info(f"Target size: {output_size}")
 
 
-   # Set up transforms
-    
+   # ------------------ Data Transforms ------------------   
    # data normalization transform
    # if (dataset_split == "pre_split") and (dataset_type=="hmaps"):
    #    # if using pre-defined dataset split, use pre-computed mean and std to save some time
    #    data_mean = [0.5404]
    #    data_std = [0.3486]
    # else:
-   data_mean, data_std = train_dataset.calculate_data_stats()
-   transform.transforms.append(v2.Normalize(data_mean, data_std)) #normalize_target(means=data_mean, stds=data_std)
+   data_mean, data_std = train_dataset.calculate_data_stats() # compute mean and std of training set per channel
+   transform.transforms.append(v2.Normalize(data_mean, data_std))
    train_dataset.set_transform(transform)
    val_dataset.set_transform(transform)
    test_dataset.set_transform(transform)
 
    # target normalization transform
-   target_mean, target_std = train_dataset.calculate_target_stats()
+   target_mean, target_std = train_dataset.calculate_target_stats() # compute mean and std of targets per channel
    target_transform = normalize_target(means=target_mean, stds=target_std)
 
 
@@ -143,13 +141,13 @@ if __name__ == "__main__":
    logger.info(f"Target transform: {target_transform}")
    
 
-   # Set up Dataloaders 
+   # ------------------ DataLoaders ------------------ 
    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=True)
    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
 
-   # create FNO model
+   # ---------------------------------------- Model ----------------------------------------
    logger.info("Creating Model and Trainer...")
    model = FNO(n_modes=(16, 16), hidden_channels=32, in_channels=input_shape[0], out_channels=2*output_size, n_layers=4)
    # model = FNOtoScalar(in_channels=input_shape[0], output_size=output_size, hidden_channels=32)
@@ -157,7 +155,8 @@ if __name__ == "__main__":
    model.to(device)
    
    
-   # Create the trainer
+   # ------------------ Trainers ------------------ 
+   # For FNOtoScalar Model use this trainer
    # trainer = CustomTrainer(model=model, 
    #                      n_epochs=epochs,
    #                      log_interval=log_interval,
@@ -167,6 +166,8 @@ if __name__ == "__main__":
    #                      eval_interval=1,
    #                      use_distributed=False,
    #                      verbose=True)
+
+   # For FNO with phyiscs loss use this trainer
    trainer = PhysicsTrainer(model=model, 
                         n_epochs=epochs,
                         log_interval=log_interval,
@@ -184,6 +185,7 @@ if __name__ == "__main__":
 
    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=30)
 
+   # ------------------ Losses ------------------ 
    l2loss = LpLoss(d=1, p=2)
    l1loss = LpLoss(d=1, p=1)
    h1loss = H1Loss(d=1)
@@ -207,7 +209,7 @@ if __name__ == "__main__":
    logger.info(losses_str)
    sys.stdout.flush()
 
-   # train the model
+   # ---------------------------------------- Training ----------------------------------------
    logger.info("Starting Training...")
    trainer.train(train_loader=train_loader,
             test_loaders={"val": val_loader},
@@ -224,15 +226,15 @@ if __name__ == "__main__":
    # save the weights of the trained model:
    model.save_checkpoint(save_folder=model_dir, save_name='final_model')
 
-
+   
+   # ---------------------------------------- Evaluation ----------------------------------------
    logger.info("Starting Evaluation...")
 
-   # load best model
-   
+   # load best model   
    model = load_fno_from_checkpoint(model_cls=model.__class__, save_folder=model_dir, save_name='best_model')
 
    trainer.evaluate_all(epoch=epochs,
-                         eval_losses=eval_losses,
-                         test_loaders={"test_data": test_loader})
+                        eval_losses=eval_losses,
+                        test_loaders={"test_data": test_loader})
      
    

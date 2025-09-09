@@ -1,24 +1,21 @@
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from torch.optim.lr_scheduler import StepLR, ReduceLROnPlateau
-from torch.utils.data import DataLoader, random_split
-from torchvision.transforms import v2
-from models.models import CNN, train, test
-from utils import PDEloss, read_list
+"""Script for running inference on a trained and saved FNO-based model"""
+import numpy as np
 import pandas as pd
 import random
 import logging
 from datetime import datetime
-import numpy as np
 from tqdm import tqdm
+
+import torch
+from torch.utils.data import DataLoader
+from torchvision.transforms import v2
 
 from neuralop.models import FNO, TFNO
 from neuralop.losses.data_losses import LpLoss, H1Loss
 from neuralop.data.transforms.data_processors import DefaultDataProcessor
-from dataset import DictImageDataset, DictHmapDataset, target_pad, normalize_target, default_img_transform, pipeline_transform
+from dataset import DictImageDataset, DictHmapDataset, normalize_target, default_img_transform, pipeline_transform
 from custom_fno import CustomTrainer, PhysicsTrainer, FNOtoScalar, FNO_MAE, FNO_MSE, FNO_MRE, FNO_CNN, load_fno_from_checkpoint
-
+from utils import PDEloss, read_list
 
 
 logger = logging.getLogger(__name__)
@@ -38,14 +35,14 @@ if __name__ == "__main__":
     save_inferences = True
     loggin_dir = "logs/"
 
-    # model_code = "2025-09-03-22-57-41" # physics FNO, hmaps
+    model_code = "2025-09-03-22-57-41" # physics FNO, hmaps
     # model_code = "2025-09-04-08-27-59" # physics FNO, images
     # model_code = "2025-09-03-20-57-36" # FNO to scalar, hmaps
-    model_code = "2025-09-03-22-53-35" # FNO to scalar, images    
+    # model_code = "2025-09-03-22-53-35" # FNO to scalar, images    
     model_type = "best_model"
     data_split = "test"
-    # model_class = FNO
-    model_class = FNOtoScalar
+    model_class = FNO
+    # model_class = FNOtoScalar
 
     model_dir = loggin_dir + model_code + "/"
     model_path = loggin_dir + model_code + "/" + model_type + ".pth"
@@ -70,9 +67,9 @@ if __name__ == "__main__":
     device = torch.accelerator.current_accelerator().type if torch.cuda.is_available() else "cpu"
     # logger.info("Using %s device", device)
 
-    # create dataset
+    # ---------------------------------------- Dataset ----------------------------------------
     dataset_type = "image"  # "hmap" or "image"
-    dataset_split = "pre_split"  # "pre_split", "random_split" or "mini"
+    dataset_split = "mini"  # "pre_split", "random_split" or "subset"
 
     train_paths = read_list('train_paths.txt')
     val_paths = read_list('val_paths.txt')
@@ -83,19 +80,22 @@ if __name__ == "__main__":
     val_ratio = 0.1
     test_ratio = 1-train_ratio-val_ratio
 
-    if dataset_split == "mini":
-      n_samples = 1000
-      sample_paths = random.sample(train_paths+val_paths+test_paths, n_samples)
-      train_paths = sample_paths[:int(len(sample_paths)*train_ratio)]
-      val_paths = sample_paths[int(len(sample_paths)*train_ratio): int(len(sample_paths)*(train_ratio+val_ratio))+1]
-      test_paths = sample_paths[int(len(sample_paths)*(train_ratio+val_ratio))+1:]
+    # if not using the pre-defined data splits, overwrite the path lists
+    if dataset_split == "subset":
+        # take only a subsample of the data
+        n_samples = 1000
+        sample_paths = random.sample(train_paths+val_paths+test_paths, n_samples)
+        train_paths = sample_paths[:int(len(sample_paths)*train_ratio)]
+        val_paths = sample_paths[int(len(sample_paths)*train_ratio): int(len(sample_paths)*(train_ratio+val_ratio))+1]
+        test_paths = sample_paths[int(len(sample_paths)*(train_ratio+val_ratio))+1:]
     elif dataset_split == "random_split":
+        # split paths randomly into train/val/test
         all_paths = random.shuffle(train_paths+val_paths+test_paths)
         train_paths = all_paths[:int(len(all_paths)*train_ratio)]
         val_paths = all_paths[int(len(all_paths)*train_ratio): int(len(all_paths)*(train_ratio+val_ratio))+1]
         test_paths = all_paths[int(len(all_paths)*(train_ratio+val_ratio))+1:]
     
-
+    # create datasets
     if dataset_type == "image":
         transform = pipeline_transform
         train_dataset = DictImageDataset(data_dir, targets_path, train_paths, transform=transform)
@@ -113,17 +113,17 @@ if __name__ == "__main__":
     # logger.info(f"Input shape: {input_shape}")
     # logger.info(f"Target size: {output_size}")
 
-    # Set up transforms
-    
+
+    # ------------------ Data Transforms ------------------   
     # data normalization transform
-    data_mean, data_std = train_dataset.calculate_data_stats()
-    transform.transforms.append(v2.Normalize(data_mean, data_std)) #normalize_target(means=data_mean, stds=data_std)
+    data_mean, data_std = train_dataset.calculate_data_stats() # compute mean and std of training set per channel
+    transform.transforms.append(v2.Normalize(data_mean, data_std)) 
     train_dataset.set_transform(transform)
     val_dataset.set_transform(transform)
     test_dataset.set_transform(transform)
 
     # target normalization transform
-    target_mean, target_std = train_dataset.calculate_target_stats()
+    target_mean, target_std = train_dataset.calculate_target_stats() # compute mean and std of targets per channel
     target_transform = normalize_target(means=target_mean, stds=target_std)
 
     # logger.info(f"Data transform:\n{transform}")
@@ -132,19 +132,18 @@ if __name__ == "__main__":
     if data_split == "val":
         test_dataset = val_dataset
 
-    # Set up Dataloaders 
-    # train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    # val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=True)
+    # ------------------ DataLoaders ------------------ 
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
 
-    # Set up model
+    # ---------------------------------------- Model ----------------------------------------
     # logger.info("Loading Model...")
+    # load model
     model = load_fno_from_checkpoint(model_cls=model_class, save_folder=model_dir, save_name='best_model')
     model.to(device)
 
 
-    # Create the trainer
+    # ------------------ Trainers ------------------ 
     if model_class == FNOtoScalar:
         trainer = CustomTrainer(model=model, 
                             n_epochs=epochs,
@@ -166,6 +165,7 @@ if __name__ == "__main__":
                             use_distributed=False,
                             verbose=True)
 
+    # ------------------ Losses ------------------ 
     l2loss = LpLoss(d=1, p=2)
     l1loss = LpLoss(d=1, p=1)
     h1loss = H1Loss(d=1)
@@ -191,6 +191,7 @@ if __name__ == "__main__":
 
 
 
+    # ---------------------------------------- Evaluation ----------------------------------------
     # logger.info("Starting Evaluation...")
    
     preds = []
@@ -200,28 +201,31 @@ if __name__ == "__main__":
     if trainer.data_processor is not None and trainer.data_processor.device != trainer.device:
         trainer.data_processor = trainer.data_processor.to(trainer.device)
     
+    # Set model to evaluation mode
     trainer.model.eval()
     if trainer.data_processor:
         trainer.data_processor.eval()
 
     errors = {f"{loss_name}": 0 for loss_name in eval_losses.keys()}
 
-    print("total", len(test_dataset))
+    print("Total: ", len(test_dataset))
     last_out = torch.zeros((batch_size, output_size)).to(device)
     n_outputs = 0
     trainer.n_samples = 0
-    with torch.no_grad():
+    with torch.no_grad(): 
         for idx, sample in tqdm(enumerate(test_loader), total=len(test_loader)):
  
-            # data, target = data.to(device), target.to(device)
+            # collect losses and predictions for a batch
             eval_step_losses, output = trainer.eval_one_batch(sample, eval_losses, return_output=True)
 
             for loss_name, val_loss in eval_step_losses.items():
-                    errors[f"{loss_name}"] += val_loss
+                errors[f"{loss_name}"] += val_loss
             
+            # store targets and predictions
             targets.append(sample["y"])
             preds.append(output)
 
+            # track number of distinct outputs to ensure model isn't collapsing
             out_batch_size = output.shape[0]
             if (output - last_out[:out_batch_size, :]).any():
                 n_outputs += 1
@@ -233,7 +237,7 @@ if __name__ == "__main__":
     preds = torch.cat(preds, dim=0)
     targets = torch.cat(targets, dim=0)
 
-
+    # average losses
     for key in errors.keys():
         errors[key] /= trainer.n_samples
 
@@ -245,7 +249,7 @@ if __name__ == "__main__":
     # logger.info(f"number of distinct outputs: {n_outputs}")
     print(f"number of distinct outputs: {n_outputs}")
 
-
+    # ---------------------------------------- Store Inferences ----------------------------------------
     if save_inferences:
         df = pd.DataFrame()
 
@@ -262,7 +266,7 @@ if __name__ == "__main__":
         df.to_csv(inferences_path, index=False)
 
     
-    # logger.info(f'MSE Evaluation loss: {losses[0]:.4e},   MAE Evaluation loss: {losses[1]:.4e},   Relative Validation Loss: {losses[2]:.4f}')
+    # Report losses
     msg = ""
     for metric, value in errors.items():
         if isinstance(value, float) or isinstance(value, torch.Tensor):

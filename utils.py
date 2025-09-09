@@ -3,10 +3,20 @@ import pandas as pd
 import torch
 import torch.nn as nn
 import torch.autograd as autograd
+from typing import List, Dict
 
 ALL_FREQ_BANDS = [100, 125, 160, 200, 250, 315, 400, 500, 630, 800, 1000, 1250, 1600, 2000, 2500, 3150, 4000]
 
-def read_list(file_path):
+def read_list(file_path: str) -> List[str]:
+    """
+    Reads a list from a file and returns it.
+
+    Args:
+        file_path (str): Path to the file that should be read
+
+    Returns:
+        List[str]: List of lines in the provided file
+    """
     list = []
     with open(file_path, 'r') as fp:
         for line in fp:
@@ -22,16 +32,35 @@ def read_list(file_path):
 
 class MRE(nn.Module):
     """
-    Mean Relative Error
+    Class for computing the mean relative error:   |x-y| / (|y|+ eps)
+    
+    Attributes:
+        redution (str): How the loss should be reduced. If 'mean', take the mean over all values. If 'sum', sum all values. If 'none', don't reduce and return elementwise loss tensor instead.
+        eps (float): Small value to add to denominator to avoid division by zero.
     """
-    def __init__(self, reduction='mean', eps=1e-8):
+
+    def __init__(self, reduction: str='mean', eps: float=1e-8):
+        """
+        Constructs MRE instance.
+        
+        Args:
+            redution (str): How the loss should be reduced. If 'mean', take the mean over all values. If 'sum', sum all values. If 'none', don't reduce and return elementwise loss tensor instead.
+            eps (float): Small value to add to denominator to avoid division by zero.
+        """
         super(MRE, self).__init__()
         assert reduction in ['mean', 'sum', 'none'], "reduction must be one of 'mean', 'sum', or 'none'"
         
         self.reduction = reduction
         self.eps = eps
     
-    def forward(self, pred, target):
+    def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        """
+        Computes the relative error between prediction and target, and reduces according to instance specifications.
+        
+        Args:
+            pred (Tensor): The prediction that should match the target.
+            target (Tensor): Groundtruth target, used to scale the relative error.
+        """
         elementwise_loss = torch.abs((target - pred)) / (torch.abs(target) + self.eps)
         if self.reduction == 'mean':
             return torch.mean(elementwise_loss)*100
@@ -40,13 +69,12 @@ class MRE(nn.Module):
         else:
             return elementwise_loss*100
     
-def compute_derivatives_3D(u, domain_size_x=2.0, domain_size_y=2.0, domain_size_z=2.0):
+def compute_derivatives_3D(u: torch.Tensor, domain_size_x: float=2.0, domain_size_y: float=2.0, domain_size_z:float=2.0) -> Dict[str, torch.Tensor]:
     """
     Compute ux, uxx, uy, uyy, uz, uzz from a 3D field using Fourier differentiation.
-    Matches approach used in the document (input in physical space).
 
     Args:
-        u (Tensor): Shape (batch, nx, ny, nz)
+        u (Tensor): Tensor to compute the derivatives of. Shape (batch, nx, ny, nz)
         domain_size (float): Physical size of the square domain
 
     Returns:
@@ -89,13 +117,12 @@ def compute_derivatives_3D(u, domain_size_x=2.0, domain_size_y=2.0, domain_size_
 
     return {'u': u, 'ux': ux, 'uxx': uxx, 'uy': uy, 'uyy': uyy, 'uz': uz, 'uzz': uzz}
 
-def compute_derivatives_2D(u, domain_size=2.0):
+def compute_derivatives_2D(u: torch.Tensor, domain_size: float=2.0) -> Dict[str, torch.Tensor]:
     """
     Compute ux, uxx, uy, uyy from a 2D field using Fourier differentiation.
-    Matches approach used in the document (input in physical space).
 
     Args:
-        u (Tensor): Shape (batch, nx, ny)
+        u (Tensor): Tensor to compute the derivatives of. Shape (batch, nx, ny)
         domain_size (float): Physical size of the square domain
 
     Returns:
@@ -128,17 +155,16 @@ def compute_derivatives_2D(u, domain_size=2.0):
 
     return {'u': u, 'ux': ux, 'uxx': uxx, 'uy': uy, 'uyy': uyy}
 
-def fft_laplacian(u, domain_size=2.0):
+def fft_laplacian(u: torch.Tensor, domain_size: float=2.0) -> torch.Tensor:
     """
-    Compute ux, uxx, uy, uyy from a 2D field using Fourier differentiation.
-    Matches approach used in the document (input in physical space).
+    Computes the Laplacian using Fourier differentiation.
 
     Args:
-        u (Tensor): Shape (batch, nx, ny)
+        u (Tensor): Tensor to compute the Laplacian of. Shape (batch, nx, ny)
         domain_size (float): Physical size of the square domain
 
     Returns:
-        ux, uxx, uy, uyy (Tensors): Each of shape (batch, nx, ny)
+        Tensor: The laplacian of the given input u.
     """
     batchsize, n_freq, nx, ny = u.shape
     device = u.device
@@ -161,15 +187,39 @@ def fft_laplacian(u, domain_size=2.0):
     lap_u = torch.fft.ifft2(lap_hat, s=(nx,ny), dim=(-2,-1)).real
     return lap_u
 
+def autograd_laplacian(u: torch.Tensor, coords: torch.Tensor) -> torch.Tensor:
+    """
+    Computes the Laplacian using autograd.
 
-def autograd_laplacian(u, coords):
+    Args:
+        u (Tensor): Tensor to compute the Laplacian of. Shape (batch, nx, ny)
+        coords (Tensor): Coordinates to at which to compute the derivatives
+
+    Returns:
+        Tensor: The laplacian of the given input u.
+    """
     grads = autograd.grad(u, coords, grad_outputs=torch.ones_like(u), create_graph=True)[0]
     d2x = autograd.grad(grads[:,0], coords, grad_outputs=torch.ones_like(grads[:,0]), create_graph=True)[0][:,0]
     d2y = autograd.grad(grads[:,1], coords, grad_outputs=torch.ones_like(grads[:,1]), create_graph=True)[0][:,1]
     return d2x + d2y
 
 class PDEloss(nn.Module):
+    """
+    Class that bundles all variations of the PDE loss for the helmholtz equation: ∇^2 * u + k^2 * u = 0 
+    where u is a 2D pressure field 
+    
+    Attributes:
+        redution (str): How the loss should be reduced. If 'mean', take the mean over all values. If 'sum', sum all values. If 'none', don't reduce and return elementwise loss tensor instead.
+        deriv_type (str): How the derivatives should be computed. For 'spectral', derivatives are computed in Fourier space and input is real-valued. For 'spectral_complex', derivatives are computed in Fourier space and input is interpreted as complex values.
+    """
     def __init__(self, reduction='sum', deriv_type='spectral'):
+        """
+        Constructs a PDEloss instance of given specifications.  
+
+        Args:
+            redution (str): How the loss should be reduced. If 'mean', take the mean over all values. If 'sum', sum all values. If 'none', don't reduce and return elementwise loss tensor instead.
+            deriv_type (str): How the derivatives should be computed. For 'spectral', derivatives are computed in Fourier space and input is real-valued. For 'spectral_complex', derivatives are computed in Fourier space and input is interpreted as complex values.
+        """
         super().__init__()
 
         assert reduction in ['mean', 'sum', 'none'], "reduction must be one of 'mean', 'sum', or 'none'"
@@ -177,43 +227,25 @@ class PDEloss(nn.Module):
         self.reduction = reduction
         self.deriv_type = deriv_type
 
-        # if deriv_type == 'autograd':
-        #     x = torch.linspace(-50, 50, 256)
-        #     y = torch.linspace(-50, 50, 256)
-        #     xx, yy = torch.meshgrid(x, y, indexing="xy")
-        #     self.coords = torch.stack([xx.reshape(-1), yy.reshape(-1)], dim=1)  # (nx*ny, 2)
-        #     self.coords.requires_grad_(True)
 
     @property
     def name(self):
+        """
+        Returns a string containing the specifications of the PDE loss instance
+        """
         return f"PDE_{self.reduction}_reduction_{self.deriv_type}_loss"
         
-    # def autograd_real_loss(self, u, freq):
-    #     lap_u = laplacian(u, self.coords)
-
-    #     c = 343 # Speed of sound in m/s
-    #     k = 2*np.pi * freq / c # wavenumber
-    #     if not torch.is_tensor(k):
-    #         k = torch.tensor(float(k), dtype=self.coords.dtype, device=self.coords.device).expand_as(u)
-    #     else:
-    #         # k = k.view(-1).expand_as(u) if k.numel() > 1 else 
-    #         k = k.expand_as(u)
-
-    #     pde = lap_u + k**2 * u
-
-    #     if self.reduction=='sum':
-    #         return torch.sum(pde**2)
-    #     elif self.reduction=='mean':
-    #         return torch.mean(pde**2)
-    #     else:
-    #         return pde
-
-
-    
-    def fft_loss(self, u, freq):
-        """
-        freq: frequency in Hz
         
+    def fft_loss(self, u: torch.Tensor, freq: List) -> torch.Tensor:
+        """
+        Computes spectral physics loss for real-valued pressures.
+
+        Args:
+            u (Tensor): 2D pressure fields, one for each frequency. Shape (batch, n_freqs, nx, ny )
+            freq (List): List of frequencies in Hz
+
+        Returns:
+            Tensor: Tensor containing the computed PDE loss         
         """
 
         n_freqs = len(freq)
@@ -234,11 +266,16 @@ class PDEloss(nn.Module):
         else:
             return pde
         
-    def fft_complex_loss(self, u, freq):
+    def fft_complex_loss(self, u: torch.Tensor, freq: List) -> torch.Tensor:
         """
-        freq: frequency in Hz
-        u: shape (batch, 2*n_freqs, nx, ny )
-        
+        Computes spectral physics loss for complex pressures.
+
+        Args:
+            u (Tensor): A 2D pressure field for each frequency, with complex values encoded in separate channels. Shape (batch, 2*n_freqs, nx, ny )
+            freq (List): List of frequencies in Hz
+
+        Returns:
+            Tensor: Tensor containing the computed PDE loss        
         """
         n_freqs = len(freq)
         batchsize, _, nx, ny = u.shape
@@ -246,7 +283,7 @@ class PDEloss(nn.Module):
         u_real = u_complex[:,:,0,:,:]
         u_img = u_complex[:,:,1,:,:]
         
-
+        # compute spectral laplacians
         lap_real = fft_laplacian(u_real, domain_size=100)
         lap_img = fft_laplacian(u_img, domain_size=100)
 
@@ -255,6 +292,7 @@ class PDEloss(nn.Module):
         k = 2*torch.pi * freq / c # wavenumber
         k = k.to(u.device, u.dtype).view(1, n_freqs, 1, 1)
 
+        # compute physical loss
         pde_real = lap_real + k**2 * u_real
         pde_img = lap_img + k**2 * u_real
 
@@ -266,7 +304,17 @@ class PDEloss(nn.Module):
         else:
             return pde_real + pde_img
         
-    def forward(self, u, freq):
+    def forward(self, u: torch.Tensor, freq: List) -> torch.Tensor:
+        """
+        Calls the loss function implementation matching the specifications of the PDEloss instance.
+
+        Args:
+            u (Tensor): A 2D pressure field for each frequency, with complex values encoded in separate channels. Shape (batch, 2*n_freqs, nx, ny )
+            freq (List): List of frequencies in Hz
+
+        Returns:
+            Tensor: Tensor containing the computed PDE loss         
+        """
         if self.deriv_type == "spectral":
             return self.fft_loss(u, freq)
         elif self.deriv_type == 'spectral_complex':
@@ -275,21 +323,48 @@ class PDEloss(nn.Module):
             raise NotImplementedError
 
 class PDEloss3D(nn.Module):
-    def __init__(self, device):
-        super().__init__()
-        self.device = device
+    """
+    Class that bundles all variations of the PDE loss for the helmholtz equation: ∇^2 * u + k^2 * u = 0 
+    where u is a 3D pressure field 
+    
+    Attributes:
+        redution (str): How the loss should be reduced. If 'mean', take the mean over all values. If 'sum', sum all values. If 'none', don't reduce and return elementwise loss tensor instead.
+    """
+    def __init__(self, reduction: str='sum'):
+        """
+        Constructs a PDEloss3D instance of given specifications.  
 
-    def forward(self, u, freq):
+        Args:
+            redution (str): How the loss should be reduced. If 'mean', take the mean over all values. If 'sum', sum all values. If 'none', don't reduce and return elementwise loss tensor instead.
+        """
+        super().__init__()
+
+        assert reduction in ['mean', 'sum', 'none'], "reduction must be one of 'mean', 'sum', or 'none'"
+        self.reduction = reduction
+
+    def forward(self, u: torch.Tensor, freq: List) -> torch.Tensor:
+        """
+        Computes spectral physics loss for real-valued pressures.
+
+        Args:
+            u (Tensor): 2D pressure fields, one for each frequency. Shape (batch, n_freqs, nx, ny )
+            freq (List): List of frequencies in Hz
+
+        Returns:
+            Tensor: Tensor containing the computed PDE loss         
+        """
+        n_freqs = len(freq)
         derivs = compute_derivatives_3D(u, domain_size=100)
 
         uxx = derivs['uxx']
         uyy = derivs['uyy']
         uzz = derivs['uzz']
 
-        #TODO: figure out how to get the frequency from the input
-        # f = 100       # frequency in Hz
         c = 343 # Speed of sound in m/s
-        k = 2*np.pi * freq / c # wavenumber
+        freq = torch.Tensor(freq)
+        k = 2*torch.pi * freq / c # wavenumber
+        k = k.to(u.device, u.dtype).view(1, n_freqs, 1, 1)
+        
         pde = uxx + uyy + uzz + k**2 *u
         return torch.mean(pde**2)
 
@@ -304,7 +379,7 @@ def compute_diffusion_coeffs(pressures: torch.Tensor) -> torch.Tensor:
 
         
     Returns:
-        np.ndarray: Array of diffusion coefficients. Shape: (batch, n_frequencies,).
+        torch.Tensor: Tensor of diffusion coefficients. Shape: (batch, n_frequencies,).
     """
  
     batchsize, n_freq = pressures.shape[:2] # Batch size, Number of frequencies 
@@ -314,7 +389,6 @@ def compute_diffusion_coeffs(pressures: torch.Tensor) -> torch.Tensor:
     if n_freq == 2*len(ALL_FREQ_BANDS):
         # complex pressures are encoded in 2 channels per frequency 
         pressures_complex = pressures.view(batchsize, len(ALL_FREQ_BANDS), 2, -1)
-        # y = torch.abs(pressures)**2 # shape: (batch, n_frequencies, L)
         re, im = pressures_complex[:, :, 0], pressures_complex[:, :, 1]
         y = re**2 + im**2 + 1e-12
     elif n_freq == len(ALL_FREQ_BANDS):
@@ -330,13 +404,12 @@ def compute_diffusion_coeffs(pressures: torch.Tensor) -> torch.Tensor:
 
 if __name__ == "__main__":
 
+    # test coefficient function by comparing to targets
     image_path = "n01532829/n01532829_124.JPEG"
     sample = np.load('mini_imagenet/simulations/n01532829/n01532829_124.npy')
     sample = sample.reshape(1, sample.shape[0], 32,32,32)
     sample = torch.tensor(sample, dtype=torch.complex64)
 
-
-    # TODO: fix the function! computed coefficients are WAY off
     coeffs = compute_diffusion_coeffs(sample)
     print(f"Computed Coefficients: {coeffs}")
 
@@ -345,6 +418,6 @@ if __name__ == "__main__":
     target = df.loc[df["path"]==image_path,:].drop(columns="path").to_numpy()[0]
     print(f"Target: {target}")
 
-    print(f"Difference: {torch.tensor(target)-coeffs}")
+    print(f"Difference: {torch.tensor(target)-coeffs}") # significant difference!
 
 

@@ -1,17 +1,18 @@
+"""Script for generating heightmaps"""
 import numpy as np
 import pandas as pd
 import os
-from run_pipeline import preprocess
-from working.gen_reliefs import optimize_tex, preprocess_tex
-from PIL import Image
-from transformers import AutoImageProcessor, AutoModelForDepthEstimation
 import torch
-import time
 from tqdm import tqdm
 from pathlib import Path
+from PIL import Image
+from transformers import AutoImageProcessor, AutoModelForDepthEstimation
+from run_pipeline import preprocess
+from working.gen_reliefs import optimize_tex, preprocess_tex
 
 
-def height_map_pipeline(image_path: str, device: str = 'cpu'):
+
+def height_map_pipeline(image_path: str, device: str = 'cpu') -> np.array:
     """
     Generates a height map from an image and optimizes it for bas-relief.
 
@@ -31,11 +32,7 @@ def height_map_pipeline(image_path: str, device: str = 'cpu'):
     # generate height map
     hmap = preprocess(image, model, processor, device=device)  # Ensure preprocess supports device
 
-    # os.makedirs("tmp", exist_ok=True)
-    # rnd_name = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
-    # obj_path = f"tmp/{rnd_name}.obj"
     ht = 0.07
-
 
     # generate relief
     ht_low = -ht
@@ -72,7 +69,6 @@ if __name__ == "__main__":
 
     # Only process images that have coefficients
     processed_paths = list(set(targets['path'].tolist()))
-    # processed_paths = ["n01532829/n01532829_7398.JPEG" ]
     image_paths = [data_dir + path for path in processed_paths]
 
     # Process all images
@@ -101,9 +97,9 @@ if __name__ == "__main__":
 
         im = Image.fromarray(hmap,)
         im = im.convert("L") # convert image to greyscale
-        # im.save(output_path, quality=95)
-        im.save(output_path, compress=0)
-        # np.save(output_path, hmap)
+        # im.save(output_path, quality=95) # for saving jpeg files
+        im.save(output_path, compress=0) # for saving png files
+        # np.save(output_path, hmap) # for saving npy files
 
 
 

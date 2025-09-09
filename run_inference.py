@@ -1,18 +1,20 @@
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from torch.optim.lr_scheduler import StepLR, ReduceLROnPlateau
-from torch.utils.data import DataLoader, random_split
-from torchvision.transforms import v2
-from dataset import ImageDataset,  HmapDataset, normalize_target, pipeline_transform, default_img_transform
-from models.models import CNN, train, test
-from utils import MRE, read_list
+"""Script for running inference on a trained and saved CNN model"""
+import numpy as np
 import pandas as pd
 import random
 import logging
 from datetime import datetime
-import numpy as np
 from tqdm import tqdm
+
+import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader
+from torchvision.transforms import v2
+
+from dataset import ImageDataset,  HmapDataset, normalize_target, pipeline_transform, default_img_transform
+from models.models import CNN, test
+from utils import MRE, read_list
+
 
 
 logger = logging.getLogger(__name__)
@@ -32,8 +34,8 @@ if __name__ == "__main__":
     save_inferences = True
     loggin_dir = "logs/"
 
-    # model_code = "2025-09-04-11-06-45" # CNN, hmap
-    model_code = "2025-09-04-11-16-40" # CNN, image
+    model_code = "2025-09-04-11-06-45" # CNN, hmap
+    # model_code = "2025-09-04-11-16-40" # CNN, image
     model_type = "best_model"
     data_split = "test" # test, val or train
 
@@ -60,9 +62,9 @@ if __name__ == "__main__":
     device = torch.accelerator.current_accelerator().type if torch.cuda.is_available() else "cpu"
     # logger.info("Using %s device", device)
 
-    # create dataset
-    dataset_type = "image"  # "hmap" or "image"
-    dataset_split = "pre_split"  # "pre_split", "random_split" or "mini"
+    # ---------------------------------------- Dataset ----------------------------------------
+    dataset_type = "hmap"  # "hmap" or "image"
+    dataset_split = "pre_split"  # "pre_split", "random_split" or "subset"
 
     train_paths = read_list('train_paths.txt')
     val_paths = read_list('val_paths.txt')
@@ -73,18 +75,22 @@ if __name__ == "__main__":
     val_ratio = 0.1
     test_ratio = 1-train_ratio-val_ratio
 
-    if dataset_split == "mini":
-        sample_paths = random.sample(train_paths+val_paths+test_paths, 1000)
+    # if not using the pre-defined data splits, overwrite the path lists
+    if dataset_split == "subset":
+        # take only a subsample of the data
+        n_samples = 1000
+        sample_paths = random.sample(train_paths+val_paths+test_paths, n_samples)
         train_paths = sample_paths[:int(len(sample_paths)*train_ratio)]
         val_paths = sample_paths[int(len(sample_paths)*train_ratio): int(len(sample_paths)*(train_ratio+val_ratio))+1]
         test_paths = sample_paths[int(len(sample_paths)*(train_ratio+val_ratio))+1:]
     elif dataset_split == "random_split":
+        # split paths randomly into train/val/test
         all_paths = random.shuffle(train_paths+val_paths+test_paths)
         train_paths = all_paths[:int(len(all_paths)*train_ratio)]
         val_paths = all_paths[int(len(all_paths)*train_ratio): int(len(all_paths)*(train_ratio+val_ratio))+1]
         test_paths = all_paths[int(len(all_paths)*(train_ratio+val_ratio))+1:]
     
-
+    # create datasets
     if dataset_type == "image":
         transform = pipeline_transform
         train_dataset = ImageDataset(data_dir, targets_path, train_paths, transform=transform)
@@ -102,17 +108,17 @@ if __name__ == "__main__":
     # logger.info(f"Input shape: {input_shape}")
     # logger.info(f"Target size: {output_size}")
 
-    # Set up transforms
     
+    # ------------------ Data Transforms ------------------   
     # data normalization transform
-    data_mean, data_std = train_dataset.calculate_data_stats()
-    transform.transforms.append(v2.Normalize(data_mean, data_std)) #normalize_target(means=data_mean, stds=data_std)
+    data_mean, data_std = train_dataset.calculate_data_stats() # compute mean and std of training set per channel
+    transform.transforms.append(v2.Normalize(data_mean, data_std)) 
     train_dataset.set_transform(transform)
     val_dataset.set_transform(transform)
     test_dataset.set_transform(transform)
 
     # target normalization transform
-    target_mean, target_std = train_dataset.calculate_target_stats()
+    target_mean, target_std = train_dataset.calculate_target_stats() # compute mean and std of targets per channel
     target_transform = normalize_target(means=target_mean, stds=target_std)
     train_dataset.set_target_transform(target_transform)
     val_dataset.set_target_transform(target_transform)
@@ -125,64 +131,66 @@ if __name__ == "__main__":
     if data_split == "val":
         test_dataset = val_dataset
 
-    # Set up Dataloaders 
-    # train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    # val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=True)
+    # ------------------ DataLoaders ------------------ 
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
 
-    # Set up model
+    # ---------------------------------------- Model ----------------------------------------
     # logger.info("Loading Model...")
+    # load model
     model = CNN(input_shape=input_shape, output_size=output_size).to(device)
-    # model = CNN(input_shape=input_shape, output_size=output_size, cnn_out_channels_1=32, cnn_out_channels_2=64).to(device)
 
     model.load_state_dict(torch.load(model_path, weights_only=True))  # load the saved best model
     model = model.to(device)
 
+    # ------------------ Losses ------------------ 
     mse_eval_loss_fct = nn.MSELoss()
     mae_eval_loss_fct = nn.L1Loss()
     rel_eval_loss_fct = MRE()
     eval_losses = {"MSE": mse_eval_loss_fct, "MAE": mae_eval_loss_fct, "MRE": rel_eval_loss_fct}
-    # loss_fcts = [mse_eval_loss_fct, mae_eval_loss_fct, rel_eval_loss_fct]
 
+
+    # ---------------------------------------- Evaluation ----------------------------------------
     # logger.info("Starting Evaluation...")
    
-    model.eval()
+    model.eval() # Set model to evaluation mode
 
   
     preds = []
     targets = []
 
 
-    print("total", len(test_dataset))
+    print("Total: ", len(test_dataset))
     last_out = torch.zeros((batch_size, output_size)).to(device)
     n_outputs = 0
     with torch.no_grad():
         for data, target in tqdm(test_loader):
-            # print("start", index_start)
             
             data, target = data.to(device), target.to(device)
             output = model(data)
             
+            # compute losses on unnormalized outputs to ensure comparability
             if target_transform:
                 output = target_transform.inverse_transform(output)
                 target = target_transform.inverse_transform(target)
             
+            # store targets and predictions
             targets.append(target)
             preds.append(output)
 
+            # track number of distinct outputs to ensure model isn't collapsing
             out_batch_size = output.shape[0]
             if (output - last_out[:out_batch_size, :]).any():
                 n_outputs += 1
                 # print(f"number of distinct outputs: {n_outputs}")
                 # print(f"output: {output}")
             last_out = output
-
-            
+      
 
     preds = torch.cat(preds, dim=0)
     targets = torch.cat(targets, dim=0)
 
+    # compute losses
     losses = {}       
     for key in eval_losses:
         loss = eval_losses[key]
@@ -192,6 +200,7 @@ if __name__ == "__main__":
     print(f"number of distinct outputs: {n_outputs}")
 
 
+    # ---------------------------------------- Store Inferences ----------------------------------------
     if save_inferences:
         df = pd.DataFrame()
 
@@ -207,6 +216,6 @@ if __name__ == "__main__":
 
         df.to_csv(inferences_path, index=False)
 
-    
+    # Report losses
     print(f'MSE Evaluation loss: {losses["MSE"]:.4e},   MAE Evaluation loss: {losses["MAE"]:.4e},   Relative Validation Loss: {losses["MRE"]:.4f}')
     logger.info(f'MSE Evaluation loss: {losses["MSE"]:.4e},   MAE Evaluation loss: {losses["MAE"]:.4e},   Relative Validation Loss: {losses["MRE"]:.4f}')
