@@ -14,7 +14,7 @@ from neuralop.models import FNO, TFNO
 from neuralop.losses.data_losses import LpLoss, H1Loss
 from neuralop.data.transforms.data_processors import DefaultDataProcessor
 from dataset import DictImageDataset, DictHmapDataset, normalize_target, default_img_transform, pipeline_transform
-from custom_fno import CustomTrainer, PhysicsTrainer, FNOtoScalar, FNO_MAE, FNO_MSE, FNO_MRE, FNO_CNN, load_fno_from_checkpoint
+from models.fno import CustomTrainer, PhysicsTrainer, FNOtoScalar, FNO_MAE, FNO_MSE, FNO_MRE, FNO_CNN, load_fno_from_checkpoint
 from utils import PDEloss, read_list
 
 
@@ -68,8 +68,8 @@ if __name__ == "__main__":
     # logger.info("Using %s device", device)
 
     # ---------------------------------------- Dataset ----------------------------------------
-    dataset_type = "image"  # "hmap" or "image"
-    dataset_split = "mini"  # "pre_split", "random_split" or "subset"
+    dataset_type = "hmap"  # "hmap" or "image"
+    dataset_split = "pre_split"  # "pre_split", "random_split" or "subset"
 
     train_paths = read_list('train_paths.txt')
     val_paths = read_list('val_paths.txt')

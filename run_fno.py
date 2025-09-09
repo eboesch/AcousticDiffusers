@@ -16,7 +16,7 @@ from neuralop.data.transforms.data_processors import DefaultDataProcessor
 from neuralop.utils import count_model_params
 
 from dataset import DictImageDataset, DictHmapDataset, normalize_target, default_img_transform, pipeline_transform
-from custom_fno import CustomTrainer, PhysicsTrainer, FNOtoScalar, FNO_MAE, FNO_MSE, FNO_MRE, FNO_CNN, load_fno_from_checkpoint
+from models.fno import CustomTrainer, PhysicsTrainer, FNOtoScalar, FNO_MAE, FNO_MSE, FNO_MRE, FNO_CNN, load_fno_from_checkpoint
 from utils import PDEloss, read_list
 
 

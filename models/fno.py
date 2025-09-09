@@ -18,7 +18,7 @@ from neuralop.losses import LpLoss
 from neuralop.models import FNO, TFNO
 from neuralop.models.base_model import BaseModel
 
-from models.models import CNN
+from models.cnn import CNN
 from utils import MRE, compute_diffusion_coeffs
 
 class FNOtoScalar(BaseModel):

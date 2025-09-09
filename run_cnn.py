@@ -12,7 +12,7 @@ from torch.utils.data import DataLoader
 from torchvision.transforms import v2
 
 from dataset import ImageDataset, HmapDataset, normalize_target, pipeline_transform, default_img_transform
-from models.models import CNN, train_epoch, test, test_batchwise
+from models.cnn import CNN, train_epoch, test, test_batchwise
 from utils import MRE, read_list
 
 
