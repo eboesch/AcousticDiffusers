@@ -1,4 +1,5 @@
 """Script for generating heightmaps"""
+
 import numpy as np
 import pandas as pd
 import os
@@ -11,8 +12,7 @@ from run_pipeline import preprocess
 from working.gen_reliefs import optimize_tex, preprocess_tex
 
 
-
-def height_map_pipeline(image_path: str, device: str = 'cpu') -> np.array:
+def height_map_pipeline(image_path: str, device: str = "cpu") -> np.array:
     """
     Generates a height map from an image and optimizes it for bas-relief.
 
@@ -20,7 +20,7 @@ def height_map_pipeline(image_path: str, device: str = 'cpu') -> np.array:
         image_path (str): Path to the image that should be processed.
         device (str): Device to run the model on, either 'cpu' or 'cuda'.
 
-    Returns:        
+    Returns:
         np.ndarray: Height map of the image, shape (260, 260) with 2 columns of 0 padding on every side. dtype: float64
     """
     model_name = "depth-anything/Depth-Anything-V2-Large-hf"
@@ -43,7 +43,6 @@ def height_map_pipeline(image_path: str, device: str = 'cpu') -> np.array:
     return tex
 
 
-
 if __name__ == "__main__":
 
     data_dir = "mini_imagenet/"
@@ -51,16 +50,13 @@ if __name__ == "__main__":
     targets = pd.read_csv(targets_path)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-
     # Test the height_map_pipeline function
-    # image_path = "n01532829/n01532829_124.JPEG"    
+    # image_path = "n01532829/n01532829_124.JPEG"
     # start = time.time()
     # tex = height_map_pipeline("mini_imagenet/" + image_path, device=device) # shape: 260x260 (256x256 plus 2 padding on each side)
     # end = time.time()
     # print(f"time: {end - start:.4f}s")
     # # print(tex[2:258, 2:258])
-
-    
 
     output_dir = "hmaps_png/"
     ht = 0.07
@@ -68,7 +64,7 @@ if __name__ == "__main__":
     h_max = ht
 
     # Only process images that have coefficients
-    processed_paths = list(set(targets['path'].tolist()))
+    processed_paths = list(set(targets["path"].tolist()))
     image_paths = [data_dir + path for path in processed_paths]
 
     # Process all images
@@ -91,15 +87,12 @@ if __name__ == "__main__":
             continue
 
         hmap = height_map_pipeline(path, device=device)
-        
+
         # normalize height map to 0-255
-        hmap = (hmap - h_min)/(h_max - h_min) * 255
+        hmap = (hmap - h_min) / (h_max - h_min) * 255
 
-        im = Image.fromarray(hmap,)
-        im = im.convert("L") # convert image to greyscale
+        im = Image.fromarray(hmap)
+        im = im.convert("L")  # convert image to greyscale
         # im.save(output_path, quality=95) # for saving jpeg files
-        im.save(output_path, compress=0) # for saving png files
+        im.save(output_path, compress=0)  # for saving png files
         # np.save(output_path, hmap) # for saving npy files
-
-
-

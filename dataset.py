@@ -13,8 +13,9 @@ from typing import Any, Callable, Tuple, Dict, List
 
 class RotateToLandscape(torch.nn.Module):
     """
-    Module for rotating images in portrait mode to landscape mode   
+    Module for rotating images in portrait mode to landscape mode
     """
+
     def forward(self, image: torch.Tensor) -> torch.Tensor:
         """
         Rotates images in portait mode to landscape mode, and returns images already in landscape mode as is.
@@ -25,11 +26,11 @@ class RotateToLandscape(torch.nn.Module):
         Returns:
             (Tensor): The input image in landscape mode
         """
-        img_size = image.shape # channels, height, width
+        img_size = image.shape  # channels, height, width
 
         # if image is in portrait format, rotate it
         if img_size[2] < img_size[1]:
-            image = torch.rot90(image, dims=(1,2))
+            image = torch.rot90(image, dims=(1, 2))
         return image
 
 
@@ -37,6 +38,7 @@ class MaxCenterCrop(torch.nn.Module):
     """
     Module for cropping an image to a central square of maximum possible size.
     """
+
     def forward(self, img: torch.Tensor) -> torch.Tensor:
         """
         Crops the input image to a central square of maximum possible size.
@@ -51,7 +53,7 @@ class MaxCenterCrop(torch.nn.Module):
         min_dim = min(h, w)
         top = (h - min_dim) // 2
         left = (w - min_dim) // 2
-        return img[:, top:top+min_dim, left:left+min_dim]
+        return img[:, top : top + min_dim, left : left + min_dim]
 
 
 class normalize_target(torch.nn.Module):
@@ -62,6 +64,7 @@ class normalize_target(torch.nn.Module):
         means (array): Array of means, one per channel.
         stds (array): Array of standard deviations, one per channel.
     """
+
     def __init__(self, means: np.ndarray, stds: np.ndarray):
         """
         Constructs an instance of normalize_target with the given means and stds.
@@ -74,7 +77,7 @@ class normalize_target(torch.nn.Module):
         self.means = torch.tensor(means, dtype=torch.float32)
         self.stds = torch.tensor(stds, dtype=torch.float32)
 
-    def transform(self, targets: torch.Tensor) -> torch.Tensor:   
+    def transform(self, targets: torch.Tensor) -> torch.Tensor:
         """
         Normalizes the targets with the instance-specific means and stds
 
@@ -84,9 +87,9 @@ class normalize_target(torch.nn.Module):
         Returns:
             (Tensor): Normalized targets
         """
-        device = targets.device     
+        device = targets.device
         return (targets - self.means.to(device)) / self.stds.to(device)
-    
+
     def inverse_transform(self, targets: torch.Tensor) -> torch.Tensor:
         """
         Inverse of target normalization: De-normalizes the targets with the instance-specific means and stds
@@ -97,9 +100,9 @@ class normalize_target(torch.nn.Module):
         Returns:
             (Tensor): De-ormalized targets
         """
-        device = targets.device 
+        device = targets.device
         return targets * self.stds.to(device) + self.means.to(device)
-    
+
     def forward(self, targets: torch.Tensor) -> torch.Tensor:
         """
         Wrapper for transform:  Returns normalized targets.
@@ -110,32 +113,28 @@ class normalize_target(torch.nn.Module):
 SIZE = 256
 
 """
-Image Transform that crops images to a maximal central square, resizes them to a uniform square size, and scales them to [0, 1].
+Image Transform that crops images to a maximal central square, resizes them to 
+a uniform square size, and scales them to [0, 1].
 """
-pipeline_transform = v2.Compose([
-    MaxCenterCrop(),
-    v2.Resize(size=(SIZE, SIZE)),
-    v2.ToDtype(torch.float32, scale=True) # scale to [0.0, 1.0]
-])
+pipeline_transform = v2.Compose(
+    [MaxCenterCrop(), v2.Resize(size=(SIZE, SIZE)), v2.ToDtype(torch.float32, scale=True)]  # scale to [0.0, 1.0]
+)
 
 """
-Image Transform that rotates images to landscape, resizes them to a uniform size of (375, 500) (the median size of all images), and scales them to [0, 1].
+Image Transform that rotates images to landscape, resizes them to 
+a uniform size of (375, 500) (the median size of all images), and scales them to [0, 1].
 """
-median_size_transform = v2.Compose([
-    RotateToLandscape(),
-    v2.Resize(size=(375, 500)),
-    v2.ToDtype(torch.float32, scale=True) # scale to [0.0, 1.0]
-])
+median_size_transform = v2.Compose(
+    [RotateToLandscape(), v2.Resize(size=(375, 500)), v2.ToDtype(torch.float32, scale=True)]  # scale to [0.0, 1.0]
+)
 
 """
 Image Transform that scales images to [0, 1].
 """
-default_img_transform = v2.Compose([
-    v2.ToDtype(torch.float32, scale=True) # scale to [0.0, 1.0]
-])
+default_img_transform = v2.Compose([v2.ToDtype(torch.float32, scale=True)])  # scale to [0.0, 1.0]
 
 
-def target_pad(target: torch.Tensor, size_h: int=SIZE, size_w: int=SIZE) -> torch.Tensor:
+def target_pad(target: torch.Tensor, size_h: int = SIZE, size_w: int = SIZE) -> torch.Tensor:
     """
     Pads targets with zeros to reach the provided size.
 
@@ -148,7 +147,9 @@ def target_pad(target: torch.Tensor, size_h: int=SIZE, size_w: int=SIZE) -> torc
         (Tensor): Target padded with zeros to reach shape (size_h, size_w)
     """
     target = target.unsqueeze(-1)
-    return torch.nn.functional.pad(target, (0, size_h - target.shape[1], 0, size_w - target.shape[0]), mode='constant', value=0.0)
+    return torch.nn.functional.pad(
+        target, (0, size_h - target.shape[1], 0, size_w - target.shape[0]), mode="constant", value=0.0
+    )
 
 
 def default_rgb_loader(path: str) -> torch.Tensor:
@@ -163,8 +164,9 @@ def default_rgb_loader(path: str) -> torch.Tensor:
     """
     # use a torch vision function to decode
     image = io.decode_image(path, mode=io.ImageReadMode.RGB)
-    
+
     return image
+
 
 def default_gray_loader(path: str) -> torch.Tensor:
     """
@@ -181,6 +183,7 @@ def default_gray_loader(path: str) -> torch.Tensor:
 
     return image
 
+
 def default_npy_loader(path: str) -> torch.Tensor:
     """
     Loads the npy file at `path` to a torch Tensor.
@@ -195,10 +198,11 @@ def default_npy_loader(path: str) -> torch.Tensor:
     hmap = torch.from_numpy(hmap).type(torch.float32).unsqueeze(0)  # load the height map and add a channel dimension
     return hmap
 
+
 class ImageDataset(Dataset):
     """
     Dataset Class for loading and preprocessing images.
-    
+
     Attributes:
         targets (pd.DataFrame): DataFrame containing all targets and the path to the corresponding image.
         data_dir (str): Path to the directory in which the data is stored.
@@ -206,10 +210,19 @@ class ImageDataset(Dataset):
         transform (Callable[[torch.Tensor], torch.Tensor]): Preprocessing transform function to apply to input images.
         target_transform (Callable[[torch.Tensor], torch.Tensor]): Preprocessing transform function to apply to targets.
     """
-    def __init__(self, data_dir: str, targets_path: str, data_paths: List[str] = None, loader: Callable[[str], torch.Tensor] = default_rgb_loader, transform: Callable[[torch.Tensor], torch.Tensor] = None, target_transform: Callable[[torch.Tensor], torch.Tensor] = None):
+
+    def __init__(
+        self,
+        data_dir: str,
+        targets_path: str,
+        data_paths: List[str] = None,
+        loader: Callable[[str], torch.Tensor] = default_rgb_loader,
+        transform: Callable[[torch.Tensor], torch.Tensor] = None,
+        target_transform: Callable[[torch.Tensor], torch.Tensor] = None,
+    ):
         """
         Constructs ImageDataset instance.
-        
+
         Args:
             data_dir (str): Path to the directory in which the data is stored.
             targets_path (str): Path the the file where targets are stored.
@@ -221,14 +234,13 @@ class ImageDataset(Dataset):
 
         # fetch targets
         self.targets = pd.read_csv(targets_path)
-        if data_paths is not None: # if a list of data paths is provided, only use those
-            self.targets = self.targets[self.targets['path'].isin(data_paths)]
+        if data_paths is not None:  # if a list of data paths is provided, only use those
+            self.targets = self.targets[self.targets["path"].isin(data_paths)]
 
         self.data_dir = data_dir
-        self.loader = loader    
-        self.transform = transform        
+        self.loader = loader
+        self.transform = transform
         self.target_transform = target_transform
-  
 
     def calculate_target_stats(self) -> Tuple[np.ndarray, np.ndarray]:
         """
@@ -239,7 +251,7 @@ class ImageDataset(Dataset):
         """
         means, stds = self.targets.iloc[:, 1:].mean().to_numpy(), self.targets.iloc[:, 1:].std().to_numpy()
         return means, stds
-    
+
     def calculate_data_stats(self) -> Tuple[np.ndarray, np.ndarray]:
         """
         Calculates mean and std of instance data per channel.
@@ -256,15 +268,15 @@ class ImageDataset(Dataset):
         # iterate through all images and sum values
         for i in tqdm(range(l)):
             img = self.__getitem__(i)[0]
-            mean += torch.sum(img, dim=(1,2))
-            std += torch.sum(img**2, dim=(1,2))
-        
+            mean += torch.sum(img, dim=(1, 2))
+            std += torch.sum(img**2, dim=(1, 2))
+
         # average
-        n = W*H*l
+        n = W * H * l
         mean /= n
         std /= n
         return mean, std
-    
+
     def set_transform(self, transform: Callable[[torch.Tensor], torch.Tensor]) -> None:
         """
         Sets the instance's `transform` to the provided transform.
@@ -285,7 +297,7 @@ class ImageDataset(Dataset):
         img_path = os.path.join(self.data_dir, self.targets.iloc[idx, 0])
 
         image = self.loader(img_path)
-        
+
         # apply data and target transforms
         if self.transform:
             image = self.transform(image)
@@ -293,18 +305,15 @@ class ImageDataset(Dataset):
             target = self.target_transform(target)
 
         return image, target
-    
-        
-    def __len__(self):        
-        return len(self.targets)
-    
 
+    def __len__(self):
+        return len(self.targets)
 
 
 class DictImageDataset(ImageDataset):
     """
     Dataset Class for loading and preprocessing images. Returns items as dictionaries {'x': image, 'y': target}.
-    
+
     Attributes:
         targets (pd.DataFrame): DataFrame containing all targets and the path to the corresponding image.
         data_dir (str): Path to the directory in which the data is stored.
@@ -312,10 +321,19 @@ class DictImageDataset(ImageDataset):
         transform (Callable[[torch.Tensor], torch.Tensor]): Preprocessing transform function to apply to input images.
         target_transform (Callable[[torch.Tensor], torch.Tensor]): Preprocessing transform function to apply to targets.
     """
-    def __init__(self, data_dir, targets_path, data_paths: list[str] = None, loader: Callable[[str], Any] = default_rgb_loader, transform: Callable[[torch.Tensor], torch.Tensor] = None, target_transform: Callable[[torch.Tensor], torch.Tensor] = None):
+
+    def __init__(
+        self,
+        data_dir,
+        targets_path,
+        data_paths: list[str] = None,
+        loader: Callable[[str], Any] = default_rgb_loader,
+        transform: Callable[[torch.Tensor], torch.Tensor] = None,
+        target_transform: Callable[[torch.Tensor], torch.Tensor] = None,
+    ):
         """
         Constructs DictImageDataset instance.
-        
+
         Args:
             data_dir (str): Path to the directory in which the data is stored.
             targets_path (str): Path the the file where targets are stored.
@@ -342,18 +360,19 @@ class DictImageDataset(ImageDataset):
         # iterate through all images and sum
         for i in tqdm(range(l)):
             img = self.__getitem__(i)["x"]
-            mean += torch.sum(img, dim=(1,2))
-            std += torch.sum(img**2, dim=(1,2))
-        
+            mean += torch.sum(img, dim=(1, 2))
+            std += torch.sum(img**2, dim=(1, 2))
+
         # average
-        n = W*H*l
+        n = W * H * l
         mean /= n
         std /= n
         return mean, std
 
     def __getitem__(self, idx) -> Dict[str, torch.Tensor]:
         """
-        Fetches the datapoint and target at the given index `idx` and returns them as a dictionary where 'x' is the datapoint and 'y' is the target.
+        Fetches the datapoint and target at the given index `idx` and returns them 
+        as a dictionary where 'x' is the datapoint and 'y' is the target.
         """
 
         # fetch image and target as in superclass ImageDataset
@@ -361,10 +380,9 @@ class DictImageDataset(ImageDataset):
 
         # return image and target as dictionary
         return {"x": image, "y": target}
-    
 
-    
-def replace_path_ending(path: str, file_type: str='npy') -> str:
+
+def replace_path_ending(path: str, file_type: str = "npy") -> str:
     """
     Replace the ending of a file path with a new ending `file_type`. E.g. change 'image.JPEG' to 'image.npy'.
 
@@ -377,10 +395,11 @@ def replace_path_ending(path: str, file_type: str='npy') -> str:
     """
     return os.path.splitext(path)[0] + "." + file_type
 
+
 class HmapDataset(ImageDataset):
     """
     Dataset Class for loading and preprocessing height maps.
-    
+
     Attributes:
         targets (pd.DataFrame): DataFrame containing all targets and the path to the corresponding image.
         data_dir (str): Path to the directory in which the data is stored.
@@ -388,10 +407,19 @@ class HmapDataset(ImageDataset):
         transform (Callable[[torch.Tensor], torch.Tensor]): Preprocessing transform function to apply to input heightmaps.
         target_transform (Callable[[torch.Tensor], torch.Tensor]): Preprocessing transform function to apply to targets.
     """
-    def __init__(self, data_dir, targets_path, data_paths: list[str] = None, file_type: str="png", transform: Callable[[torch.Tensor], torch.Tensor] = None, target_transform: Callable[[torch.Tensor], torch.Tensor] = None):
+
+    def __init__(
+        self,
+        data_dir,
+        targets_path,
+        data_paths: list[str] = None,
+        file_type: str = "png",
+        transform: Callable[[torch.Tensor], torch.Tensor] = None,
+        target_transform: Callable[[torch.Tensor], torch.Tensor] = None,
+    ):
         """
         Constructs HmapDataset instance.
-        
+
         Args:
             data_dir (str): Path to the directory in which the data is stored.
             targets_path (str): Path the the file where targets are stored.
@@ -400,18 +428,25 @@ class HmapDataset(ImageDataset):
             transform (Callable[[torch.Tensor], torch.Tensor]): Preprocessing transform function to apply to input heightmaps.
             target_transform (Callable[[torch.Tensor], torch.Tensor]): Preprocessing transform function to apply to targets.
         """
-        super().__init__(data_dir, targets_path, data_paths=data_paths, loader=default_gray_loader, transform=transform, target_transform=target_transform)
+        super().__init__(
+            data_dir,
+            targets_path,
+            data_paths=data_paths,
+            loader=default_gray_loader,
+            transform=transform,
+            target_transform=target_transform,
+        )
 
-        if file_type == 'npy':
-            self.loader = default_npy_loader 
+        if file_type == "npy":
+            self.loader = default_npy_loader
         # change target paths to have the correct file types
-        self.targets['path'] = self.targets['path'].map(lambda path: replace_path_ending(path, file_type))
+        self.targets["path"] = self.targets["path"].map(lambda path: replace_path_ending(path, file_type))
 
 
 class DictHmapDataset(DictImageDataset):
     """
     Dataset Class for loading and preprocessing height maps. Returns items as dictionaries {'x': hmap, 'y': target}.
-    
+
     Attributes:
         targets (pd.DataFrame): DataFrame containing all targets and the path to the corresponding image.
         data_dir (str): Path to the directory in which the data is stored.
@@ -419,10 +454,19 @@ class DictHmapDataset(DictImageDataset):
         transform (Callable[[torch.Tensor], torch.Tensor]): Preprocessing transform function to apply to input heightmaps.
         target_transform (Callable[[torch.Tensor], torch.Tensor]): Preprocessing transform function to apply to targets.
     """
-    def __init__(self, data_dir, targets_path, data_paths: list[str] = None, file_type: str="png", transform: Callable[[torch.Tensor], torch.Tensor] = None, target_transform: Callable[[torch.Tensor], torch.Tensor] = None):
+
+    def __init__(
+        self,
+        data_dir,
+        targets_path,
+        data_paths: list[str] = None,
+        file_type: str = "png",
+        transform: Callable[[torch.Tensor], torch.Tensor] = None,
+        target_transform: Callable[[torch.Tensor], torch.Tensor] = None,
+    ):
         """
         Constructs DictHmapDataset instance.
-        
+
         Args:
             data_dir (str): Path to the directory in which the data is stored.
             targets_path (str): Path the the file where targets are stored.
@@ -431,14 +475,19 @@ class DictHmapDataset(DictImageDataset):
             transform (Callable[[torch.Tensor], torch.Tensor]): Preprocessing transform function to apply to input heightmaps.
             target_transform (Callable[[torch.Tensor], torch.Tensor]): Preprocessing transform function to apply to targets.
         """
-        super().__init__(data_dir, targets_path, data_paths=data_paths, loader=default_gray_loader, transform=transform, target_transform=target_transform)
+        super().__init__(
+            data_dir,
+            targets_path,
+            data_paths=data_paths,
+            loader=default_gray_loader,
+            transform=transform,
+            target_transform=target_transform,
+        )
 
-        if file_type == 'npy':
-            self.loader = default_npy_loader 
+        if file_type == "npy":
+            self.loader = default_npy_loader
         # change target paths to have the correct file types
-        self.targets['path'] = self.targets['path'].map(lambda path: replace_path_ending(path, file_type))
-
-
+        self.targets["path"] = self.targets["path"].map(lambda path: replace_path_ending(path, file_type))
 
 
 if __name__ == "__main__":
@@ -446,7 +495,7 @@ if __name__ == "__main__":
     targets_path = "mini_imagenet/coeffs.csv"
 
     df = pd.read_csv(targets_path)
-    processed_paths = list(set(df['path'].tolist()))
+    processed_paths = list(set(df["path"].tolist()))
 
     relative_paths = processed_paths[:3]
 
@@ -454,11 +503,10 @@ if __name__ == "__main__":
     # dataset = ImageDataset(data_dir, targets_path, transform=pipeline_transform())
     # print(dataset[0])
 
-
     # test HmapDataset class
     data_dir = "hmaps/"
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
-    dataset = HmapDataset("hmaps_png/", targets_path, file_type='png', transform=default_img_transform())
+    dataset = HmapDataset("hmaps_png/", targets_path, file_type="png", transform=default_img_transform())
     print(dataset[465])
     print(dataset.calculate_data_stats())
