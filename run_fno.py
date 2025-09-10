@@ -81,7 +81,7 @@ if __name__ == "__main__":
     logger.info("Creating Dataset...")
 
     dataset_type = "hmap"  # "hmap" or "image"
-    dataset_split = "mini"  # "pre_split", "random_split" or "mini"
+    dataset_split = "pre_split"  # "pre_split", "random_split" or "subset"
 
     train_paths = read_list("dataset/train_paths.txt")
     val_paths = read_list("dataset/val_paths.txt")
@@ -92,7 +92,7 @@ if __name__ == "__main__":
     test_ratio = 1 - train_ratio - val_ratio
 
     # if not using the pre-defined data splits, overwrite the path lists
-    if dataset_split == "mini":
+    if dataset_split == "subset":
         # take only a subsample of the data
         n_samples = 1000
         sample_paths = random.sample(train_paths + val_paths + test_paths, n_samples)
@@ -155,27 +155,18 @@ if __name__ == "__main__":
 
     # ---------------------------------------- Model ----------------------------------------
     logger.info("Creating Model and Trainer...")
-    model = FNO(
-        n_modes=(16, 16), hidden_channels=32, in_channels=input_shape[0], out_channels=2 * output_size, n_layers=4
-    )
+    model = FNO(n_modes=(16, 16), hidden_channels=32, in_channels=input_shape[0], out_channels=2 * output_size, n_layers=4)
     # model = FNOtoScalar(in_channels=input_shape[0], output_size=output_size, hidden_channels=32)
     # model = FNO_CNN(input_shape=input_shape, output_size=output_size)
     model.to(device)
 
-    # ------------------ Trainers ------------------
-    # For FNOtoScalar Model use this trainer
-    # trainer = CustomTrainer(model=model,
-    #                      n_epochs=epochs,
-    #                      log_interval=log_interval,
-    #                      logger=logger,
-    #                      device=device,
-    #                      data_processor=DefaultDataProcessor(out_normalizer=target_transform).to(device),
-    #                      eval_interval=1,
-    #                      use_distributed=False,
-    #                      verbose=True)
+    # ------------------ Trainer ------------------
+    if model.__class__ == FNOtoScalar:
+        trainer_cls = CustomTrainer
+    else:
+        trainer_cls = PhysicsTrainer
 
-    # For FNO with phyiscs loss use this trainer
-    trainer = PhysicsTrainer(
+    trainer = trainer_cls(
         model=model,
         n_epochs=epochs,
         log_interval=log_interval,

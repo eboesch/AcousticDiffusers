@@ -5,7 +5,7 @@ from tqdm import tqdm
 from timeit import default_timer
 from pathlib import Path
 from logging import Logger
-from typing import Union, Dict, List, Tuple, Callable, Type
+from typing import Union, Dict, List, Tuple, Callable, Type, Any
 
 import torch
 from torch import nn
@@ -171,6 +171,8 @@ class CustomTrainer(Trainer):
         scheduler: torch.optim.lr_scheduler,
         regularizer=None,
         training_loss: Callable[[torch.Tensor, torch.Tensor], torch.Tensor] = None,
+        physics_loss: Any = None, # to match signature of PhysicsTrainer
+        lmbda: Any = None,
         eval_losses: Dict[str, Callable[[torch.Tensor, torch.Tensor], torch.Tensor]] = None,
         save_every: int = None,
         save_best: int = None,
@@ -210,6 +212,8 @@ class CustomTrainer(Trainer):
             optimizer, regularizer, scheduler) from state saved in
             `resume_from_dir`
 
+        The arguments `physics_loss` and `lmbda` are only included to match the signature of PhysicsTrainer.
+
         Returns
         -------
         all_metrics: dict
@@ -240,9 +244,6 @@ class CustomTrainer(Trainer):
         if eval_losses is None:  # By default just evaluate on the training loss
             eval_losses = dict(l2=training_loss)
 
-        # accumulated wandb metrics
-        # self.wandb_epoch_metrics = None
-
         # attributes for checkpointing
         self.save_every = save_every
         self.save_best = save_best
@@ -252,9 +253,9 @@ class CustomTrainer(Trainer):
         # Load model and data_processor to device
         self.model = self.model.to(self.device)
 
-        # if self.use_distributed and dist.is_initialized():
-        #     device_id = dist.get_rank()
-        #     self.model = DDP(self.model, device_ids=[device_id], output_device=device_id)
+        if self.use_distributed and dist.is_initialized():
+            device_id = dist.get_rank()
+            self.model = DDP(self.model, device_ids=[device_id], output_device=device_id)
 
         if self.data_processor is not None:
             self.data_processor = self.data_processor.to(self.device)
@@ -416,23 +417,15 @@ class CustomTrainer(Trainer):
             keyed f"{test_loader_name}_{metric}" for each test_loader
 
         """
-        # values_to_log = {}
         msg = ""
         for metric, value in eval_metrics.items():
             if isinstance(value, float) or isinstance(value, torch.Tensor):
                 msg += f"{metric}={value:.4e}, "
-            # if self.wandb_log:
-            #     values_to_log[metric] = value
 
         msg = f"Eval: " + msg[:-2]  # cut off last comma+space
         self.logger.info(msg)
         print(msg)
         sys.stdout.flush()
-
-        # if self.wandb_log:
-        #     wandb.log(data=values_to_log,
-        #               step=epoch+1,
-        #               commit=True)
 
 
 ALL_FREQ_BANDS = [100, 125, 160, 200, 250, 315, 400, 500, 630, 800, 1000, 1250, 1600, 2000, 2500, 3150, 4000]
@@ -667,6 +660,45 @@ class PhysicsTrainer(CustomTrainer):
             return eval_step_losses, None
 
 
+def load_fno_from_checkpoint(model_cls: Type[nn.Module], save_folder: str, save_name: str = "best_model") -> nn.Module:
+    """
+    Loads an FNO-based model of class `model_class` from `save_folder`.
+
+    Args:
+        model_cls (Type[nn.Module]): The class of the model being loaded.
+        save_folder (str): Path to the location the model was saved.
+        save_name (str): Name of the model. Default is 'best_model'.
+
+    Returns:
+        (nn-Module): Instance of the model_class with weights restored from the saved model.
+    """
+
+    metadata_filepath = os.path.join(save_folder, save_name + "_metadata.pkl")
+
+    # Force old behavior torch.load behavior
+    init_kwargs = torch.load(metadata_filepath, weights_only=False)
+
+    version = init_kwargs.pop("_version")
+    if hasattr(model_cls, "_version") and version != model_cls._version:
+        print(version)
+        warnings.warn(
+            f"Checkpoint saved for version {version} of model {model_cls._name} but current code is version {model_cls._version}"
+        )
+
+    if "args" in init_kwargs:
+        init_args = init_kwargs.pop("args")
+    else:
+        init_args = []
+    instance = model_cls(*init_args, **init_kwargs)
+
+    # Load state dict
+    state_dict_path = os.path.join(save_folder, save_name + "_state_dict.pt")
+    state = torch.load(state_dict_path, map_location="cpu", weights_only=False)
+    instance.load_state_dict(state)
+
+    return instance
+
+
 # Losses ----------------------------------------------------------------------------------------
 
 
@@ -769,42 +801,3 @@ class FNO_MRE(FNO_MSE):
     @property
     def name(self):
         return f"MRE_{self.d}D_{self.reduction}_reduction_loss"
-
-
-def load_fno_from_checkpoint(model_cls: Type[nn.Module], save_folder: str, save_name: str = "best_model") -> nn.Module:
-    """
-    Loads an FNO-based model of class `model_class` from `save_folder`.
-
-    Args:
-        model_cls (Type[nn.Module]): The class of the model being loaded.
-        save_folder (str): Path to the location the model was saved.
-        save_name (str): Name of the model. Default is 'best_model'.
-
-    Returns:
-        (nn-Module): Instance of the model_class with weights restored from the saved model.
-    """
-
-    metadata_filepath = os.path.join(save_folder, save_name + "_metadata.pkl")
-
-    # Force old behavior torch.load behavior
-    init_kwargs = torch.load(metadata_filepath, weights_only=False)
-
-    version = init_kwargs.pop("_version")
-    if hasattr(model_cls, "_version") and version != model_cls._version:
-        print(version)
-        warnings.warn(
-            f"Checkpoint saved for version {version} of model {model_cls._name} but current code is version {model_cls._version}"
-        )
-
-    if "args" in init_kwargs:
-        init_args = init_kwargs.pop("args")
-    else:
-        init_args = []
-    instance = model_cls(*init_args, **init_kwargs)
-
-    # Load state dict
-    state_dict_path = os.path.join(save_folder, save_name + "_state_dict.pt")
-    state = torch.load(state_dict_path, map_location="cpu", weights_only=False)
-    instance.load_state_dict(state)
-
-    return instance

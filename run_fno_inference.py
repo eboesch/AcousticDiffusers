@@ -138,6 +138,8 @@ if __name__ == "__main__":
 
     if data_split == "val":
         test_dataset = val_dataset
+    elif data_split != "test":
+        raise NotImplementedError(f"data_split {data_split} not implemented, currently only 'test' and 'val' are supported.")
 
     # ------------------ DataLoaders ------------------
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)

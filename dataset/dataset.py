@@ -504,9 +504,9 @@ if __name__ == "__main__":
     # print(dataset[0])
 
     # test HmapDataset class
-    data_dir = "hmaps/"
+    data_dir = "hmaps_png/"
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
-    dataset = HmapDataset("hmaps_png/", targets_path, file_type="png", transform=default_img_transform())
+    dataset = HmapDataset(data_dir, targets_path, file_type="png", transform=default_img_transform())
     print(dataset[465])
     print(dataset.calculate_data_stats())

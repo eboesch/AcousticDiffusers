@@ -41,7 +41,7 @@ if __name__ == "__main__":
 
     # Training settings
     seed = 0
-    epochs = 1
+    epochs = 10
     batch_size = 32
     lr = 1e-3
     log_interval = 100
