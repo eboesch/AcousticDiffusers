@@ -12,7 +12,7 @@ from torch.optim.lr_scheduler import StepLR, ReduceLROnPlateau
 from torch.utils.data import DataLoader
 from torchvision.transforms import v2
 
-from dataset import ImageDataset, HmapDataset, normalize_target, pipeline_transform, default_img_transform
+from dataset.dataset import ImageDataset, HmapDataset, normalize_target, pipeline_transform, default_img_transform
 from models.cnn import CNN, train_epoch, test, test_batchwise
 from utils import MRE, read_list
 
@@ -67,9 +67,9 @@ if __name__ == "__main__":
     dataset_type = "hmap"  # "hmap" or "image"
     dataset_split = "pre_split"  # "pre_split", "random_split" or "subset"
 
-    train_paths = read_list("train_paths.txt")
-    val_paths = read_list("val_paths.txt")
-    test_paths = read_list("test_paths.txt")
+    train_paths = read_list("dataset/train_paths.txt")
+    val_paths = read_list("dataset/val_paths.txt")
+    test_paths = read_list("dataset/test_paths.txt")
 
     train_ratio = 0.7
     val_ratio = 0.1

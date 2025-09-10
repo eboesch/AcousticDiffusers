@@ -3,11 +3,14 @@
 import numpy as np
 import pandas as pd
 import os
+import sys
 import torch
 from tqdm import tqdm
 from pathlib import Path
 from PIL import Image
 from transformers import AutoImageProcessor, AutoModelForDepthEstimation
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))) # add parent directory to path for imports
 from run_pipeline import preprocess
 from working.gen_reliefs import optimize_tex, preprocess_tex
 

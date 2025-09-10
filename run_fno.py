@@ -16,7 +16,7 @@ from neuralop.losses.data_losses import LpLoss, H1Loss
 from neuralop.data.transforms.data_processors import DefaultDataProcessor
 from neuralop.utils import count_model_params
 
-from dataset import DictImageDataset, DictHmapDataset, normalize_target, default_img_transform, pipeline_transform
+from dataset.dataset import DictImageDataset, DictHmapDataset, normalize_target, default_img_transform, pipeline_transform
 from models.fno import (
     CustomTrainer,
     PhysicsTrainer,
@@ -81,11 +81,11 @@ if __name__ == "__main__":
     logger.info("Creating Dataset...")
 
     dataset_type = "hmap"  # "hmap" or "image"
-    dataset_split = "pre_split"  # "pre_split", "random_split" or "mini"
+    dataset_split = "mini"  # "pre_split", "random_split" or "mini"
 
-    train_paths = read_list("train_paths.txt")
-    val_paths = read_list("val_paths.txt")
-    test_paths = read_list("test_paths.txt")
+    train_paths = read_list("dataset/train_paths.txt")
+    val_paths = read_list("dataset/val_paths.txt")
+    test_paths = read_list("dataset/test_paths.txt")
 
     train_ratio = 0.7
     val_ratio = 0.1
