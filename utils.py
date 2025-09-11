@@ -1,9 +1,11 @@
 import numpy as np
 import pandas as pd
+import os
+import warnings
 import torch
 import torch.nn as nn
 import torch.autograd as autograd
-from typing import List, Dict
+from typing import List, Dict, Type
 
 ALL_FREQ_BANDS = [100, 125, 160, 200, 250, 315, 400, 500, 630, 800, 1000, 1250, 1600, 2000, 2500, 3150, 4000]
 
@@ -29,6 +31,45 @@ def read_list(file_path: str) -> List[str]:
             list.append(x)
 
     return list
+
+
+def load_model_from_checkpoint(model_cls: Type[nn.Module], save_folder: str, save_name: str = "best_model") -> nn.Module:
+    """
+    Loads an FNO-based model of class `model_class` from `save_folder`.
+
+    Args:
+        model_cls (Type[nn.Module]): The class of the model being loaded.
+        save_folder (str): Path to the location the model was saved.
+        save_name (str): Name of the model. Default is 'best_model'.
+
+    Returns:
+        (nn-Module): Instance of the model_class with weights restored from the saved model.
+    """
+
+    metadata_filepath = os.path.join(save_folder, save_name + "_metadata.pkl")
+
+    # Force old behavior torch.load behavior
+    init_kwargs = torch.load(metadata_filepath, weights_only=False)
+
+    version = init_kwargs.pop("_version")
+    if hasattr(model_cls, "_version") and version != model_cls._version:
+        print(version)
+        warnings.warn(
+            f"Checkpoint saved for version {version} of model {model_cls._name} but current code is version {model_cls._version}"
+        )
+
+    if "args" in init_kwargs:
+        init_args = init_kwargs.pop("args")
+    else:
+        init_args = []
+    instance = model_cls(*init_args, **init_kwargs)
+
+    # Load state dict
+    state_dict_path = os.path.join(save_folder, save_name + "_state_dict.pt")
+    state = torch.load(state_dict_path, map_location="cpu", weights_only=False)
+    instance.load_state_dict(state)
+
+    return instance
 
 
 class MRE(nn.Module):

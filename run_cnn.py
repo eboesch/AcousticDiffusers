@@ -14,7 +14,7 @@ from torchvision.transforms import v2
 
 from dataset.dataset import ImageDataset, HmapDataset, normalize_target, pipeline_transform, default_img_transform
 from models.cnn import CNN, train_epoch, test, test_batchwise
-from utils import MRE, read_list
+from utils import MRE, read_list, load_model_from_checkpoint
 
 
 logger = logging.getLogger(__name__)
@@ -137,7 +137,8 @@ if __name__ == "__main__":
 
     # ---------------------------------------- Model ----------------------------------------
     logger.info("Creating Model...")
-    model = CNN(input_shape=input_shape, output_size=output_size).to(device)
+    # model = CNN(input_shape=input_shape, output_size=output_size).to(device)
+    model = CNN(input_shape=input_shape, output_size=output_size, n_conv_layers=18, cnn_hidden_channels=32, cnn_padding=2, pool_padding=0).to(device)
     # model = CNN(input_shape=input_shape, output_size=output_size, cnn_out_channels_1=32, cnn_out_channels_2=64).to(device)
 
     optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=lr)
@@ -196,16 +197,16 @@ if __name__ == "__main__":
         if val_losses[val_criterion] < best_val_loss:
             best_val_loss = val_losses[val_criterion]
             if save_model:
-                torch.save(model.state_dict(), model_dir + "best_model.pth")
+                model.save_checkpoint(model_dir, "best_model")
 
     if save_model:
-        torch.save(model.state_dict(), model_dir + "final_model.pth")
+        model.save_checkpoint(model_dir, "final_model")
 
     # ---------------------------------------- Evaluation ----------------------------------------
     logger.info("Starting Evaluation...")
     # Evaluation
     if save_model:  # load best model to evaluate
-        model.load_state_dict(torch.load(model_dir + "best_model.pth", weights_only=True))  # load the saved best model
+        model = load_model_from_checkpoint(model_cls=model.__class__, save_folder=model_dir, save_name="best_model") # load the saved best model
         model = model.to(device)
 
     # compute losses on test dataset

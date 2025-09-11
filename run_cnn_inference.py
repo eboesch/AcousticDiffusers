@@ -14,7 +14,7 @@ from torchvision.transforms import v2
 
 from dataset.dataset import ImageDataset, HmapDataset, normalize_target, pipeline_transform, default_img_transform
 from models.cnn import CNN, test
-from utils import MRE, read_list
+from utils import MRE, read_list, load_model_from_checkpoint
 
 
 logger = logging.getLogger(__name__)
@@ -36,6 +36,7 @@ if __name__ == "__main__":
     model_code = "2025-09-04-11-06-45"  # CNN, hmap
     # model_code = "2025-09-04-11-16-40" # CNN, image
     model_type = "best_model"
+    model_cls = CNN
     data_split = "test"  # test, val or train
 
     model_dir = loggin_dir + model_code + "/"
@@ -135,9 +136,7 @@ if __name__ == "__main__":
     # ---------------------------------------- Model ----------------------------------------
     # logger.info("Loading Model...")
     # load model
-    model = CNN(input_shape=input_shape, output_size=output_size).to(device)
-
-    model.load_state_dict(torch.load(model_path, weights_only=True))  # load the saved best model
+    model = load_model_from_checkpoint(model_cls=model_cls, save_folder=model_dir, save_name="best_model")
     model = model.to(device)
 
     # ------------------ Losses ------------------

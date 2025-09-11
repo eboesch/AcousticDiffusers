@@ -1,3 +1,4 @@
+import numpy as np
 import math
 from tqdm import tqdm
 from logging import Logger
@@ -9,6 +10,8 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import DataLoader
+
+from neuralop.models.base_model import BaseModel
 
 
 def expand(x: Union[int, Tuple[int, int]]) -> Tuple[int, int]:
@@ -57,7 +60,7 @@ def calc_output_size(
     return [h_out, w_out]
 
 
-class CNN(nn.Module):
+class CNN(BaseModel, name="CNN"):
     """
     Custom CNN class with 2 convolutional layers, each followed by a MaxPooling layer, and 2 linear layers.
     """
@@ -66,14 +69,16 @@ class CNN(nn.Module):
         self,
         input_shape: Tuple[int, int, int],
         output_size: int,
-        cnn_out_channels_1: int = 16,
-        cnn_out_channels_2: int = 32,
+        n_conv_layers: int = 2,
+        cnn_hidden_channels: Union[int, List[int]] = 32,
         cnn_kernel_size: int = 3,
         cnn_stride: int = 1,
         cnn_padding: int = 0,
         pool_kernel_size: int = 2,
         pool_stride: int = 2,
+        pool_padding: int = 0,
         linear_size: int = 64,
+        **kwargs
     ):
         """
         Constructs a CNN instance:
@@ -92,40 +97,41 @@ class CNN(nn.Module):
         """
         super(CNN, self).__init__()
         # set up layers
-        self.conv1 = nn.Conv2d(
-            in_channels=input_shape[0],
-            out_channels=cnn_out_channels_1,
-            kernel_size=cnn_kernel_size,
-            stride=cnn_stride,
-            padding=cnn_padding,
-        )
-        self.pool1 = nn.MaxPool2d(kernel_size=pool_kernel_size, stride=pool_stride)
-        self.conv2 = nn.Conv2d(
-            in_channels=cnn_out_channels_1,
-            out_channels=cnn_out_channels_2,
-            kernel_size=cnn_kernel_size,
-            stride=cnn_stride,
-            padding=cnn_padding,
-        )
-        self.pool2 = nn.MaxPool2d(kernel_size=pool_kernel_size, stride=pool_stride)
+
+        if isinstance(cnn_hidden_channels, int):
+            # if only a single channel size is provided, use the same for all conv layers
+            cnn_hidden_channels = [cnn_hidden_channels]* n_conv_layers 
+            cnn_channel_sizes = [input_shape[0]] + cnn_hidden_channels # append input channels to the front of the list
+        elif isinstance(cnn_hidden_channels, list):
+            if len(cnn_hidden_channels) != n_conv_layers:
+                raise ValueError("cnn_hidden_channels must be an integer of its length must be equal to n_conv_layers")
+            else:
+                # append input channels to the front of the list
+                cnn_channel_sizes = [input_shape[0]] + cnn_hidden_channels
+        
+        conv_out_dim = input_shape[1:]
+
+        self.layers = nn.ModuleList()
+
+        for i in range(n_conv_layers):
+            if (cnn_kernel_size >= conv_out_dim[0] + 2*cnn_padding) or (cnn_kernel_size >= conv_out_dim[1] + 2*cnn_padding):
+                break # stop adding layers if kernel size is larger than layer input size
+            self.layers.append(nn.Conv2d(in_channels=cnn_channel_sizes[i], out_channels=cnn_channel_sizes[i+1], kernel_size=cnn_kernel_size, stride=cnn_stride, padding=cnn_padding))
+            self.layers.append(nn.MaxPool2d(kernel_size=pool_kernel_size, stride=pool_stride, padding=pool_padding))
+            conv1_shape = calc_output_size(conv_out_dim, cnn_kernel_size, cnn_stride, cnn_padding)
+            conv_out_dim = calc_output_size(conv1_shape, pool_kernel_size, pool_stride, pool_padding)
+
 
         # compute size of output after convolutional layers
-        conv1_shape = calc_output_size(input_shape[1:], cnn_kernel_size, cnn_stride)
-        pool1_shape = calc_output_size(conv1_shape, pool_kernel_size, pool_stride)
-        conv2_shape = calc_output_size(pool1_shape, cnn_kernel_size, cnn_stride)
-        pool2_shape = calc_output_size(conv2_shape, pool_kernel_size, pool_stride)
-        flattened_size = int(cnn_out_channels_2 * pool2_shape[0] * pool2_shape[1])
+        flattened_size = int(cnn_channel_sizes[-1] * conv_out_dim[0] * conv_out_dim[1])
 
         self.fc1 = nn.Linear(flattened_size, linear_size)
         self.fc2 = nn.Linear(linear_size, output_size)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.conv1(x)
-        x = F.relu(x)
-        x = self.pool1(x)
-        x = self.conv2(x)
-        x = F.relu(x)
-        x = self.pool2(x)
+        for layer in self.layers:
+            x = layer(x)
+
         x = torch.flatten(x, 1)
         x = self.fc1(x)
         x = F.relu(x)

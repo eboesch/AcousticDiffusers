@@ -23,9 +23,8 @@ from models.fno import (
     FNO_MSE,
     FNO_MRE,
     FNO_CNN,
-    load_fno_from_checkpoint,
 )
-from utils import PDEloss, read_list
+from utils import PDEloss, read_list, load_model_from_checkpoint
 
 
 logger = logging.getLogger(__name__)
@@ -147,7 +146,7 @@ if __name__ == "__main__":
     # ---------------------------------------- Model ----------------------------------------
     # logger.info("Loading Model...")
     # load model
-    model = load_fno_from_checkpoint(model_cls=model_class, save_folder=model_dir, save_name="best_model")
+    model = load_model_from_checkpoint(model_cls=model_class, save_folder=model_dir, save_name="best_model")
     model.to(device)
 
     # ------------------ Trainers ------------------

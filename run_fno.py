@@ -25,9 +25,8 @@ from models.fno import (
     FNO_MSE,
     FNO_MRE,
     FNO_CNN,
-    load_fno_from_checkpoint,
 )
-from utils import PDEloss, read_list
+from utils import PDEloss, read_list, load_model_from_checkpoint
 
 
 logger = logging.getLogger(__name__)
@@ -228,6 +227,7 @@ if __name__ == "__main__":
     logger.info("Starting Evaluation...")
 
     # load best model
-    model = load_fno_from_checkpoint(model_cls=model.__class__, save_folder=model_dir, save_name="best_model")
+    model = load_model_from_checkpoint(model_cls=model.__class__, save_folder=model_dir, save_name="best_model")
+    model = model.to(device)
 
     trainer.evaluate_all(epoch=epochs, eval_losses=eval_losses, test_loaders={"test_data": test_loader})
