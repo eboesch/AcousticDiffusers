@@ -172,6 +172,9 @@ We further experimented a little with deeper CNN architectures. Instead of using
 
 These experiments suggest that with more adjustments of the CNN architecture performance can be further improved.
 
+### Pretrained Vision Models
+At the very end of this project, we also wanted to experiment with using pretrained Vision Models from `timm` instead of custom CNNs. Such models can be finetuned with `run_pretrained.py`. Unfortunately there was no time to properly test the performance of these models, but initial results are promising.
+
 ## Future Work
 
 ### 3D FNO
@@ -233,6 +236,7 @@ AcousticDiffusers/
 ├── run_fno_inference.py         # Script for running inference of FNO-based model  
 ├── run_fno.py                   # Script for training FNO-based model  
 ├── run_pipeline.py              # Script for generating diffusion coefficients
+├── run_pretrained.py            # Script for finetuning pretrained vision models
 └── utils.py                     # File containing several utility functions
 ```
 
@@ -311,13 +315,23 @@ model = FNOtoScalar(*args)
 For training this architecture, we further adjust the `CustomTrainer` class to compute the physics loss and the diffusion coefficients before taking the residual loss, see the class `PhysicsTrainer` in `models/fno.py`.
 
 To train such a model, set
-```
+```bash
 model = FNO(*args)
 ```
 
 The PDE loss is implemented in the class `PDEloss` in `utils.py`. The implementation supports sum, mean and no reduction, but in practice we have found mean reduction to be far superior. Currently two types of spectral losses (i.e. computing derivatives in Fourier space) are implemented:
 - For `deriv_type = spectral`, the latent pressures are considered real-valued. Thus, set `model = FNO(out_channels=output_size, *args)`.
 - For `deriv_type = spectral_complex`, the latent pressures are considered complex-valued. Thus, set `model = FNO(out_channels=2*output_size, *args)`.
+
+### Finetuning a Pretrained Transformer Model
+
+To finetune a pretrained transformer model from `timm` to our problem, run
+```bash
+python run_pretrained.py
+```
+The model can be chosen by setting the variable `model_name`. As for training the other models, the data type on which the model should be trained must be specified with `dataset_type` and the generation of the data splits must be specified using `dataset_split`.
+
+Note that, currently, heightmaps are read as RGBs with 3 channels instead of gray scale images with 1 channel. This is because the transformer models' default preprocessing transform expects 3 input channels, so to read heightmaps as grayscale would require changing the preprocessing transform as well.
 
 
 ### Inference
@@ -336,11 +350,11 @@ Both scripts load a trained model and evaluate it on test data. For a model `log
 Finally, as during training of the models, the data type on which the model was trained must be specified with `dataset_type` and the generation of the data splits must be specified using `dataset_split`. If you wish to be sure that the same data splits as during training are used, we recommend using `pre_split` with fixed splits stored in `.txt``files.
 
 For FNO-based models, the `model_class` must further be specified. For the FNO with global pooling, set 
-```
+```bash
 model_class = FNOtoScalar
 ```
 and for the physics-informed FNO with latent pressures, set
-```
+```bash
 model_class = FNO
 ```
 
