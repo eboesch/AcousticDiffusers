@@ -20,6 +20,7 @@ pickleshare==0.7.5
 pillow==11.2.1
 pip-chill==1.0.3
 scikit-image==0.25.2
+timm==1.0.19
 tomli==2.0.1
 torch==2.8.0
 torchvision==0.22.0
