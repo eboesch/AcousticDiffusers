@@ -13,8 +13,8 @@ from torch.utils.data import DataLoader
 from torchvision.transforms import v2
 
 from dataset.dataset import ImageDataset, HmapDataset, normalize_target, pipeline_transform, default_img_transform
-from models.cnn import CNN, train_epoch, test, test_batchwise
-from utils import MRE, read_list, load_model_from_checkpoint
+from models.cnn import CNN, train_epoch, test, test_batchwise, PhysicsCNN, train_physics_epoch, test_physics
+from utils import MRE, read_list, load_model_from_checkpoint, PDEloss
 
 
 logger = logging.getLogger(__name__)
@@ -34,7 +34,7 @@ if __name__ == "__main__":
         datefmt="%H:%M",
     )
 
-    blurb = "CNN, images, batch_size = 32, lr = 1e-3 "
+    blurb = "deep CNN, 18 layers, no relu, batch_size = 32, lr = 1e-3 "
     logger.info(
         f"--------------------------------------------\nStarting Script\n{blurb}\n--------------------------------------------"
     )
@@ -59,6 +59,7 @@ if __name__ == "__main__":
     targets_path = "mini_imagenet/coeffs.csv"
 
     device = torch.accelerator.current_accelerator().type if torch.cuda.is_available() else "cpu"
+    device = 'cpu'
     logger.info("Using %s device", device)
 
     # ---------------------------------------- Dataset ----------------------------------------
@@ -137,9 +138,9 @@ if __name__ == "__main__":
 
     # ---------------------------------------- Model ----------------------------------------
     logger.info("Creating Model...")
-    # model = CNN(input_shape=input_shape, output_size=output_size).to(device)
+    # model = CNN(input_shape=input_shape, output_size=output_size, n_conv_layers=2, cnn_hidden_channels=[16,32]).to(device)
     model = CNN(input_shape=input_shape, output_size=output_size, n_conv_layers=18, cnn_hidden_channels=32, cnn_padding=2, pool_padding=0).to(device)
-    # model = CNN(input_shape=input_shape, output_size=output_size, cnn_out_channels_1=32, cnn_out_channels_2=64).to(device)
+    # model = PhysicsCNN(input_shape=input_shape, output_size=2*output_size, n_conv_layers=2, cnn_hidden_channels=[16, 32]).to(device)
 
     optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=lr)
 
@@ -154,6 +155,11 @@ if __name__ == "__main__":
 
     logger.info("Model: %s", model)
     logger.info(f"Using {training_loss} training loss")
+
+    if model.__class__ == PhysicsCNN:
+        physics_loss = PDEloss(reduction="mean", deriv_type="spectral_complex")
+        lmbda = 1
+        logger.info(f"Using {physics_loss.name} physics loss with lambda = {lmbda}")
 
     # logger.info("Using StepLR scheduler")
     # step_size = 4
@@ -178,10 +184,16 @@ if __name__ == "__main__":
         print(f"Epoch {epoch+1}")
         logger.info(f"Epoch {epoch+1}")
 
-        # train a single epoch
-        train_epoch(model, train_loader, training_loss, optimizer, log_interval, logger, device)
-        # compute validation loss for all eval_losses
-        val_losses = test(val_loader, model, eval_losses, val_dataset.target_transform, device)
+        if model.__class__ == PhysicsCNN:
+            # train a single epoch
+            train_physics_epoch(model, train_loader, training_loss, physics_loss, lmbda, optimizer, log_interval, logger, device)
+            # compute validation loss for all eval_losses
+            val_losses = test_physics(val_loader, model, eval_losses, val_dataset.target_transform, device)
+        else:
+            # train a single epoch
+            train_epoch(model, train_loader, training_loss, optimizer, log_interval, logger, device)
+            # compute validation loss for all eval_losses
+            val_losses = test(val_loader, model, eval_losses, val_dataset.target_transform, device)
 
         logger.info(
             f'MSE Validation Loss: {val_losses["MSE"]:.4e},   MAE Validation Loss: {val_losses["MAE"]:.4e},   Relative Validation Loss: {val_losses["MRE"]:.4f}'
@@ -210,7 +222,10 @@ if __name__ == "__main__":
         model = model.to(device)
 
     # compute losses on test dataset
-    test_losses = test(test_loader, model, eval_losses, test_dataset.target_transform, device)
+    if model.__class__ == PhysicsCNN:
+        test_losses = test_physics(test_loader, model, eval_losses, test_dataset.target_transform, device)
+    else:
+        test_losses = test(test_loader, model, eval_losses, test_dataset.target_transform, device)
 
     # report losses
     logger.info(
