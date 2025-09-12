@@ -8,6 +8,7 @@ from torch.utils.data import Dataset
 from torchvision import io
 from torchvision.transforms import v2
 
+from PIL import Image
 from typing import Any, Callable, Tuple, Dict, List
 
 
@@ -168,6 +169,22 @@ def default_rgb_loader(path: str) -> torch.Tensor:
     return image
 
 
+def PIL_rgb_loader(path: str) -> torch.Tensor:
+    """
+    Loads the RGB image at `path` to an RGB PIL image.
+
+    Args:
+        path (Tensor): Path to the desired image
+
+    Returns:
+        (Tensor): RGB PIL Image.
+    """
+    # use PIL to open images
+    image = Image.open(path).convert("RGB")
+
+    return image
+
+
 def default_gray_loader(path: str) -> torch.Tensor:
     """
     Loads the grayscale image at `path` to a torch Tensor with 1 channel.
@@ -180,6 +197,22 @@ def default_gray_loader(path: str) -> torch.Tensor:
     """
     # use a torch vision function to decode grayscale image
     image = io.decode_image(path, mode=io.ImageReadMode.GRAY)
+
+    return image
+    
+
+def PIL_gray_loader(path: str) -> torch.Tensor:
+    """
+    Loads the grayscale image at `path` to an RGB PIL image.
+
+    Args:
+        path (Tensor): Path to the desired image
+
+    Returns:
+        (Tensor): RGB PIL Image.
+    """
+    # use PIL to open images
+    image = Image.open(path).convert("L")
 
     return image
 
@@ -414,6 +447,7 @@ class HmapDataset(ImageDataset):
         targets_path,
         data_paths: list[str] = None,
         file_type: str = "png",
+        loader: Callable[[str], Any] = None,
         transform: Callable[[torch.Tensor], torch.Tensor] = None,
         target_transform: Callable[[torch.Tensor], torch.Tensor] = None,
     ):
@@ -428,17 +462,23 @@ class HmapDataset(ImageDataset):
             transform (Callable[[torch.Tensor], torch.Tensor]): Preprocessing transform function to apply to input heightmaps.
             target_transform (Callable[[torch.Tensor], torch.Tensor]): Preprocessing transform function to apply to targets.
         """
+        if loader is None:
+            if file_type == "npy":
+                loader = default_npy_loader
+            elif file_type in ["png", "jpg", "jpeg"]:
+                loader = default_gray_loader
+            else:
+                raise ValueError(f"no default loader for file type {file_type} available, please provide a custom loader.")
+
         super().__init__(
             data_dir,
             targets_path,
             data_paths=data_paths,
-            loader=default_gray_loader,
+            loader=loader,
             transform=transform,
             target_transform=target_transform,
         )
 
-        if file_type == "npy":
-            self.loader = default_npy_loader
         # change target paths to have the correct file types
         self.targets["path"] = self.targets["path"].map(lambda path: replace_path_ending(path, file_type))
 
