@@ -31,11 +31,6 @@ In this project, we aim to predict the acoustic diffusion coefficients produced 
 The computation of the pressures can be done using traditional physics solvers such as in [1], but it's very time-consuming, especially since it needs to be run for each relief individually. We therefore attempt employing machine learning methods to predict the diffusion coefficients.
 
 
-<!-- 
-Provide background and motivation:  
-- Why this problem matters  
-- Prior work or context  
-- Scope and limitations -->
 
 ## Dataset 
 As the base dataset, we used the Mini-ImageNet dataset, consisting of 100 classes of 600 images each. Of these, 32'825 were processed as follows:
@@ -48,14 +43,11 @@ These heightmaps were then stored as PNGs, see `generate_hmaps.py` to generate a
 
 To obtain the acoustic diffusion coefficients for a heightmap, a physical PDE solver is used, namely [1]. The entire pipeline from imapge to diffusion coefficients can be run with the script `run_pipeline.py`. The diffusion coefficients of the 32'825 processed images can be found in `mini_imagenet/coeffs.csv`.
 
+The diffusion coefficients take values between $0$ and $1$, where coefficients for lower frequencies take bigger values of around $0.7$, while coefficients for higher frequencies take smaller values of around $0.2$. Their distribution can be seen in more detail in the figure below. This figure was generated using the notebook `DataExploration.ipynb`.
 
-
-<!-- ## 🏗️ Methodology
-
-Explain the approach:  
-- Theoretical background or governing equations  
-- Frameworks, libraries, and datasets used  
-- Simulation or experimental setup   -->
+<div align='center'>
+    <img src="figures/coeff_distr.png" alt="Distribution of Diffusion Coefficients" style="max-height:300px; max-width:100%; width:auto;"/>
+</div>
 
 
 
@@ -188,19 +180,16 @@ Finally, the pressures computed by the physics solver are complex-valued. Since 
 ### Spherical physical loss
 Since listeners are assumed to be on a hemisphere, one could assume that the latent pressures also form a hemisphere. In this case, the Helmholtz equation most be formulated in spherical coordinates:
 $$\frac{1}{𝑟^2}   \frac{𝜕}{𝜕r} \left(𝑟^2  \frac{𝜕𝑢}{𝜕𝑟}\right)+  \frac{1}{𝑟^2  \sin⁡𝜃 }  \frac{𝜕}{𝜕𝜃}  \left(\sin⁡𝜃  \frac{𝜕𝑢}{𝜕𝜃} \right)+\frac{1}{𝑟^2  \sin^2⁡𝜃 }  \frac{𝜕^2 𝑢}{𝜕𝜙^2 }+𝑘^2 𝑢=0 $$
-This equation is clearly more complicated than the original Helmholtz equation. To implement this PDE loss, one would likely have to make use of spherical harmonics, which would require some further research.
-
-
-
-
+This equation is clearly more complicated than the original Helmholtz equation. To implement this PDE loss, one would likely have to make use of spherical harmonics, which would require some further research. 
 
 
 
 ## Installation
 
 - Clone the repository: `git clone https://github.com/eboesch/AcousticDiffusers.git`
-- Create a virtual environment with `python3 -m venv ./venv` and activate it with `source venv/bin/activate`.
-- Install dependencies: `pip install -r requirements.txt`
+- Create a conda virtual environment with `conda create -n venv` and activate it with `conda activate venv`.
+- Install pip in the virtual environment: `conda install pip`
+- Install dependencies in virtual environment: `python -m pip install -r requirements.txt`
 
 
 ## Structure
