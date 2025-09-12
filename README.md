@@ -4,9 +4,19 @@ _Testing Neural Operator architectures for acoustic diffusion modeling._
 
 ## Abstract
 
-This project explores the prediction of acoustic diffusion coefficients produced by a given relief by leveraging Fourier Neural Operators.  
-We address **[research question / practical challenge]** and demonstrate **[key contributions / results]**.  
-The repository doubles as both a **report of the work** and a **reproducible codebase**.
+This project explores the prediction of acoustic diffusion coefficients produced by a given relief by leveraging Fourier Neural Operators. We implement different architectures, addressing the mismatch of input and output dimensions troubling the FNO,  and compare model performances. This repository doubles as both a sort of report of the project and a reproducible codebase.
+
+
+## Contents
+- [Problem Statement](#problem-statement)
+- [Dataset](#dataset)
+- [Implemented Architectures](#implemented-architectures)
+- [Experiments & Results](#experiments--results)
+- [Future Work](#future-work)
+- [Installation](#installation)
+- [Structure](#structure)
+- [Usage](#usage)
+- [References](#references)
 
 
 ## Problem Statement
@@ -49,7 +59,7 @@ Explain the approach:
 
 
 
-## Architectures Implemented
+## Implemented Architectures
 
 ### CNN
 As a baseline, we use a standard CNN architecture. We use two convolutional layers, both followed by a Max Pooling layer. The outputs are then flattened to be 1-dimensional and fed through two linear layers. The number of outputs corresponds to the number of frequencies for which we have have coefficients.
@@ -66,7 +76,7 @@ This architecture is implemented in `models/cnn.py` and can be trained using the
 #### Brief Introduction to FNOs
 Where neural networks learn individual functions, predicting its output values given an input, neural _operators_ learn entire families of functions: they learn an operator between function spaces. Thus, given an input function, e.g. the initial conditions of a PDE, we can simply perform a forward pass through the trained neural operator and receive the corresponding solution function, rather than having to train an individual network for each set of input parameters. This makes neural operators especially relevant for solving PDEs, where traditional solvers are often very time consuming and have to be rerun for each individual set of initial conditions and parameters.
 
-Fourier Neural Operators (FNOs) boost the efficiency of the original neural operators, by formulating the integral kernel directly in Fourier space and making use of properties of the Fourier transform. After an initial pointwise projection into a higher dimensional space, the input function is fed through an adjustable number of Fourier layers, and then (again pointwise) projected down to the desired number of channels. In each Fourier layer, the input is transformed into Fourier space, where convolution is now just multiplication. So the input is multiplied with a kernel matrix $R$ and then transformed back to physical space. Finally, a linear transformation of the input is added and a non-linear activation is applied. For more details, see [2]. 
+Fourier Neural Operators (FNOs) boost the efficiency of the original neural operators, by formulating the integral kernel directly in Fourier space and making use of properties of the Fourier transform. After an initial pointwise projection into a higher dimensional space, the input function is fed through an adjustable number of Fourier layers, and then (again pointwise) projected down to the desired number of channels. In each Fourier layer, the input is transformed into Fourier space, where convolution is now just multiplication. Thus, the input is multiplied with a kernel matrix $R$ and then transformed back to physical space. Finally, a linear transformation of the input is added and a non-linear activation is applied. For more details, see [2]. 
 <div align='center'>
     <img src="figures/FNO_structure.png" alt="Structure of an FNO" style="max-height:200px; max-width:100%; width:auto;"/>
 </div>
@@ -110,7 +120,7 @@ For an implementation of this loss, see the class `PDEloss` in `utils.py`
 
 In the physics solver that produced our dataset, the acoustic pressures are considered to be complex-valued. We therefore also implemented a version of this loss that considers complex pressures. Instead of predicting complex values, we instead encode the complex values in two separate separate real-valued channels, one for the real part, one for the imaginary part. The FNO block must therefore have twice as many output channels as frequencies.
 
-## Results
+## Experiments & Results
 
 ### Comparing Architectures
 
@@ -140,6 +150,28 @@ One possible reason why the physics-informed FNO with latent pressures performs 
 
 As we can see, increasing the amount of training data only leads to a marginal improvement. To achieve an MRE comparable to that of the FNO with Global Pooling, we would likely need _significantly_ more training data. We conclude that generating more training data is not worth it for this particular architecture.
 
+### CNN with physics loss
+Since the FNO couldn't benefit from this physics loss concept, we wished to investigate whether the simpler CNN architecture could. The architecture is analogous to the physics-informed FNO with latent pressures: we essentially replace the FNO Block with Convolutional + Pooling layers as in the CNN, but instead of flattening layers and feeding them through linear layers, we take the PDE loss and compute the diffusion coefficients for the residual loss.
+
+On heightmap data, when keeping the same convolution architecture as for our baseline CNN, we found that this significantly worsened performance:
+| **Model**            | **MRE (in %)** |
+|----------------------|:--------------:|
+| Baseline CNN         |      10.24     |
+| Physics-informed CNN |      22.42     |
+
+While, there has not been much experimentation in this avnue, this nonetheless strongly suggests that this form of a physics-loss has no further potential.
+
+### Deep CNNs
+We further experimented a little with deeper CNN architectures. Instead of using only 2 sets of Convolutional + MaxPooling layers, we used 18 layers instead. This indeed resulted in an improvement of performance, though the FNO with Global Pooling still outperforms this architecture. If an additional ReLU layer is added after each MaxPooling layer, the performance drops significantly
+
+| **Model**          | **MRE (in %)** |
+|--------------------|:--------------:|
+| Baseline CNN       |      10.24     |
+| Deep CNN           |      9.73      |
+| Deep CNN with ReLU |      16.56     |
+
+These experiments suggest that with more adjustments of the CNN architecture performance can be further improved.
+
 ## Future Work
 
 ### 3D FNO
@@ -157,25 +189,9 @@ This equation is clearly more complicated than the original Helmholtz equation. 
 
 
 
-### Spherical FNO
-
-### CNN with physics loss
-Concept: Equip CNN with physics loss, analogous to FNO with latent pressures
-Basically replace FNO Block with Convolutional + Pooling layers 
-Why? To see if CNN can benefit of this type of                                                                                  physics loss
 
 
 
-
-
-
-## Features (Codebase)
-
-- Feature 1  
-- Feature 2  
-- Feature 3  
-
----
 
 ## Installation
 
@@ -197,12 +213,12 @@ AcousticDiffusers/
 │   ├── train_paths.txt          # File with path of images assigned to training set
 │   └── val_paths.txt            # File with path of images assigned to validation set
 ├── figures/                     # Directory for figures for README
-├── hmaps/                       # Directory for Heightmap Dataset stored as npy files
-├── hmaps_png/                   # Directory for Heightmap Dataset stored as PNGs
-├── literature/                  # Directory for literature and references
-├── logs/                        # Directory for training logs
-├── mini_imagenet/               # Directory for Image Dataset
-│   └── coeffs.csv               # File containing target diffusion coefficients
+├── hmaps/                       # Directory for Heightmap Dataset stored as npy files   (untracked)
+├── hmaps_png/                   # Directory for Heightmap Dataset stored as PNGs        (untracked)
+├── literature/                  # Directory for literature and references               (untracked)
+├── logs/                        # Directory for training logs                           (untracked)
+├── mini_imagenet/               # Directory for Image Dataset                           (untracked)
+│   └── coeffs.csv               # File containing target diffusion coefficients         (untracked)
 ├── models/                      # Directory for model implementations
 │   ├── cnn.py                   # File with CNN implementation and training functions
 │   └── fno.py                   # File with FNO implementation and training functions
@@ -223,7 +239,6 @@ AcousticDiffusers/
 
 ## Usage
 
-Activate venv: `conda activate diffusers`
 
 ### Running the Diffusion Coefficient Pipeline
 To run the pipeline for generating the diffusion coefficients, use: 
@@ -242,6 +257,9 @@ In the file itself, the directory where the files should be saved can be specifi
 In the notebook `HeightMapAnalysis.ipynb` different storage formats were compared, with the conclusion that saving the heightmaps as a PNG leads to the best reconstruction error.
 
 ### Data Handling
+The paths to image and heightmap data as well as the target coefficients can be configured through the variables `data_dir`, `hmap_dir` resp. `targets_path` in all training and inference scripts.
+
+
 In `dataset/dataset.py` custom dataset classes are implemented. The classes `ImageDataset` and `DictImageDataset` are intended for the original RGB images. The classes `HmapDataset` and `DictHmapDataset` are intended for heightmaps: at initialization the file type of the heightmaps can be provided and the paths are internally corrected accordingly. The two `Dict` classes are intended for FNO training, since the FNO trainers expect items to be provided as dictionaries.
 
 The dataset classes support custom preprocessing of both input data and targets. The `transform` function for preprocessing the input data, and the `target_transform` function for preprocessing the targets can be provided at initialization or later using `dataset.set_transform` resp. `dataset.set_target_transform`. 
@@ -257,7 +275,7 @@ The CNN architectures as well as the corresponding training and testing function
 ```bash
 python run_cnn.py
 ```
-A variety of hyperparameters such as number of epochs, batch size, learning rate or training loss can be specified by changing the corresponding variables in `run_cnn.py`. For each model, a log with training progress and model specifics is created and saved. If `save_model = True`, the model is saved in the same directory.
+A variety of hyperparameters such as number of epochs, batch size, learning rate, training loss or number of Convolutional+Pooling layers can be specified by changing the corresponding variables in `run_cnn.py`. For each model, a log with training progress and model specifics is created and saved. If `save_model = True`, the model is saved in the same directory.
 
 To select whether the model should be trained on heighmaps or images, set the variable `dataset_type` to the corresponding value. The variable `dataset_split` determines how the dataset is split into training, validation and test sets:
 - `pre_split`: Use predefined data split. The paths are read from `.txt` files in `dataset/` for each split.
@@ -265,6 +283,8 @@ To select whether the model should be trained on heighmaps or images, set the va
 - `subset`: Instead of the whole dataset, only a subset is used. The number of total samples used can be configured, and the splits are generated randomly.
 
 For the generation of `.txt` files with fixed data splits, see the notebook `DataExploration.ipynb`. That notebook also contains a variety of exploratory investigations, e.g. about the size of the images, the distribution of train/val/test per image class, etc.
+
+To train a CNN with physics-informed loss, set `model = PhysicsCNN(*args)`. The architecture is implemented in the class `PhysicsCNN` in `models/cnn.py`
 
 ### Training an FNO
 For training FNO-based models we use the `neuraloperator` package. It provides implementations of FNOs and the corresponding training and evaluation framework. We slightly adapted their Trainer class by incorporating logging of training progress and intermediary evaluations, see the class `CustomTrainer` in `models/fno.py`.
